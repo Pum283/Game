@@ -1,0 +1,160 @@
+    private void UpdateSettings(KeyboardState keyboardState, GameTime gameTime)
+    {
+        _settingsFpsTimer += (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _settingsFpsCount++;
+        if (_settingsFpsTimer >= 0.5f) { _settingsFps = _settingsFpsCount / _settingsFpsTimer; _settingsFpsTimer = 0; _settingsFpsCount = 0; }
+
+        bool up    = (keyboardState.IsKeyDown(Keys.W)     && _previousKeyboardState.IsKeyUp(Keys.W))
+                  || (keyboardState.IsKeyDown(Keys.Up)    && _previousKeyboardState.IsKeyUp(Keys.Up));
+        bool down  = (keyboardState.IsKeyDown(Keys.S)     && _previousKeyboardState.IsKeyUp(Keys.S))
+                  || (keyboardState.IsKeyDown(Keys.Down)  && _previousKeyboardState.IsKeyUp(Keys.Down));
+        bool left  = (keyboardState.IsKeyDown(Keys.A)     && _previousKeyboardState.IsKeyUp(Keys.A))
+                  || (keyboardState.IsKeyDown(Keys.Left)  && _previousKeyboardState.IsKeyUp(Keys.Left));
+        bool right = (keyboardState.IsKeyDown(Keys.D)     && _previousKeyboardState.IsKeyUp(Keys.D))
+                  || (keyboardState.IsKeyDown(Keys.Right) && _previousKeyboardState.IsKeyUp(Keys.Right));
+        bool esc   = keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape);
+        bool tabFwd= keyboardState.IsKeyDown(Keys.Tab)    && _previousKeyboardState.IsKeyUp(Keys.Tab);
+        bool tabBwd= keyboardState.IsKeyDown(Keys.Q)      && _previousKeyboardState.IsKeyUp(Keys.Q);
+
+        if (esc) { _gameState = GameState.Lobby; return; }
+        if (tabFwd) { _settingsCategoryIndex = (_settingsCategoryIndex + 1) % 5; _settingsItemIndex = 0; }
+        if (tabBwd) { _settingsCategoryIndex = (_settingsCategoryIndex - 1 + 5) % 5; _settingsItemIndex = 0; }
+
+        int[] itemCounts = { 2, 3, 3, 3, 2 };
+        int maxItems = itemCounts[_settingsCategoryIndex];
+        if (up)   _settingsItemIndex = (_settingsItemIndex - 1 + maxItems) % maxItems;
+        if (down) _settingsItemIndex = (_settingsItemIndex + 1) % maxItems;
+
+        if (left || right)
+        {
+            int d = right ? 1 : -1;
+            switch (_settingsCategoryIndex)
+            {
+                case 0:
+                    if (_settingsItemIndex == 0) { _settingsResolutionIndex = Math.Clamp(_settingsResolutionIndex + d, 0, 4); int[][] res = { new[]{800,600}, new[]{1024,768}, new[]{1280,720}, new[]{1600,900}, new[]{1920,1080} }; _graphics.PreferredBackBufferWidth = res[_settingsResolutionIndex][0]; _graphics.PreferredBackBufferHeight = res[_settingsResolutionIndex][1]; _graphics.ApplyChanges(); }
+                    if (_settingsItemIndex == 1) { _settingsFullscreen = !_settingsFullscreen; _graphics.IsFullScreen = _settingsFullscreen; _graphics.ApplyChanges(); }
+                    break;
+                case 1:
+                    if (_settingsItemIndex == 0) _settingsEffectsQuality = Math.Clamp(_settingsEffectsQuality + d, 0, 2);
+                    if (_settingsItemIndex == 1) { _settingsVsync = !_settingsVsync; IsFixedTimeStep = _settingsVsync; }
+                    if (_settingsItemIndex == 2) _settingsFpsCap = Math.Clamp(_settingsFpsCap + d, 0, 3);
+                    break;
+                case 2:
+                    if (_settingsItemIndex == 0) _settingsMasterVolume = Math.Clamp(_settingsMasterVolume + d, 0, 10);
+                    if (_settingsItemIndex == 1) _settingsMusicVolume   = Math.Clamp(_settingsMusicVolume   + d, 0, 10);
+                    if (_settingsItemIndex == 2) _settingsSfxVolume     = Math.Clamp(_settingsSfxVolume     + d, 0, 10);
+                    break;
+                case 3:
+                    if (_settingsItemIndex == 0) _settingsShowFps     = !_settingsShowFps;
+                    if (_settingsItemIndex == 1) _settingsShowMinimap = !_settingsShowMinimap;
+                    if (_settingsItemIndex == 2) _settingsUiScale     = Math.Clamp(_settingsUiScale + d, 0, 2);
+                    break;
+                case 4:
+                    if (_settingsItemIndex == 0) _settingsDifficulty  = Math.Clamp(_settingsDifficulty + d, 0, 2);
+                    if (_settingsItemIndex == 1) _settingsScreenShake = !_settingsScreenShake;
+                    break;
+            }
+        }
+    }
+
+    private string SettingsVolBar(int vol)
+    {
+        string bar = "[";
+        for (int i = 0; i < 10; i++) bar += i < vol ? "|" : " ";
+        return bar + $"] {vol}/10";
+    }
+
+    private void DrawSettings(GameTime gameTime)
+    {
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, 800, 600), new Color(12, 18, 35));
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, 800, 65), new Color(20, 32, 55));
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 63, 800, 3), Color.CornflowerBlue);
+        string title = "CAI DAT (SETTINGS)";
+        Vector2 titleSz = _scoreFont.MeasureString(title);
+        _spriteBatch.DrawString(_scoreFont, title, new Vector2(400 - titleSz.X / 2, 18), Color.Gold);
+        string navHint = "Q/Tab: Danh muc | W/S: Chon | A/D: Thay doi | ESC: Quay lai";
+        Vector2 navSz = _scoreFont.MeasureString(navHint);
+        _spriteBatch.DrawString(_scoreFont, navHint, new Vector2(400 - navSz.X / 2, 44), Color.Gray);
+
+        string[] catNames = { "HIEN THI", "DO HOA", "AM THANH", "GIAO DIEN", "GAMEPLAY" };
+        int tabX = 10;
+        int[] tabW = { 110, 95, 110, 120, 110 };
+        for (int c = 0; c < 5; c++)
+        {
+            bool sel = c == _settingsCategoryIndex;
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(tabX, 72, tabW[c], 28), sel ? new Color(40, 80, 150) : new Color(25, 35, 60));
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(tabX, 72, tabW[c], 2), sel ? Color.CornflowerBlue : Color.Gray * 0.4f);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(tabX, 72, 2, 28), sel ? Color.CornflowerBlue : Color.Gray * 0.4f);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(tabX + tabW[c] - 2, 72, 2, 28), sel ? Color.CornflowerBlue : Color.Gray * 0.4f);
+            Vector2 cSz = _scoreFont.MeasureString(catNames[c]);
+            _spriteBatch.DrawString(_scoreFont, catNames[c], new Vector2(tabX + tabW[c] / 2f - cSz.X / 2f, 78), sel ? Color.White : Color.Gray);
+            tabX += tabW[c] + 5;
+        }
+
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(10, 100, 780, 450), new Color(18, 28, 50));
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(10, 100, 780, 2), Color.CornflowerBlue * 0.5f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(10, 548, 780, 2), Color.CornflowerBlue * 0.5f);
+
+        int startY = 118;
+        int rowH = 68;
+
+        Action<int, string, string, string> DrawRow = (idx, label, value, subhint) =>
+        {
+            bool rowSel = idx == _settingsItemIndex;
+            int ry = startY + idx * rowH;
+            if (rowSel) _spriteBatch.Draw(_pixelTexture, new Rectangle(15, ry, 770, rowH - 6), new Color(30, 55, 100, 160));
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(15, ry + rowH - 7, 770, 1), Color.DimGray * 0.4f);
+            string pfx = rowSel ? "> " : "  ";
+            _spriteBatch.DrawString(_scoreFont, pfx + label, new Vector2(30, ry + 8), rowSel ? Color.White : Color.LightGray);
+            string valStr = rowSel ? "< " + value + " >" : value;
+            Vector2 vs = _scoreFont.MeasureString(valStr);
+            _spriteBatch.DrawString(_scoreFont, valStr, new Vector2(775 - vs.X, ry + 8), rowSel ? Color.Yellow : Color.Cyan);
+            if (rowSel && subhint.Length > 0)
+                _spriteBatch.DrawString(_scoreFont, subhint, new Vector2(30, ry + 34), Color.DimGray);
+        };
+
+        string[] resOpts   = { "800x600 (4:3)", "1024x768 (4:3)", "1280x720 (16:9)", "1600x900 (16:9)", "1920x1080 FullHD" };
+        string[] qualOpts  = { "Thap", "Trung Binh", "Cao" };
+        string[] fpsOpts   = { "30 FPS", "60 FPS", "120 FPS", "Khong gioi han" };
+        string[] scaleOpts = { "Nho", "Binh Thuong", "Lon" };
+        string[] diffOpts  = { "Binh Thuong", "Kho", "Tan Bao" };
+
+        switch (_settingsCategoryIndex)
+        {
+            case 0:
+                DrawRow(0, "Do phan giai / Khung hinh",    resOpts[_settingsResolutionIndex],  "Thay doi ap dung ngay");
+                DrawRow(1, "Toan man hinh (Fullscreen)",    _settingsFullscreen ? "BAT" : "TAT","A/D de bat/tat");
+                break;
+            case 1:
+                DrawRow(0, "Chat luong hieu ung (Particle)",qualOpts[_settingsEffectsQuality], "High = dep hon nhung giam FPS");
+                DrawRow(1, "VSync (dong bo man hinh)",       _settingsVsync ? "BAT" : "TAT",   "Giam xe hinh, tang input lag nhe");
+                DrawRow(2, "Gioi han FPS",                  fpsOpts[_settingsFpsCap],           "A/D chon muc FPS mong muon");
+                break;
+            case 2:
+                DrawRow(0, "Am luong tong the (Master)", SettingsVolBar(_settingsMasterVolume), "A/D tang/giam (0-10)");
+                DrawRow(1, "Am luong nhac nen (Music)",  SettingsVolBar(_settingsMusicVolume),  "A/D tang/giam (0-10)");
+                DrawRow(2, "Am luong hieu ung (SFX)",    SettingsVolBar(_settingsSfxVolume),    "A/D tang/giam (0-10)");
+                break;
+            case 3:
+                DrawRow(0, "Hien thi dong ho FPS",      _settingsShowFps     ? "BAT" : "TAT", "Goc tren phai trong tran");
+                DrawRow(1, "Hien thi Minimap",          _settingsShowMinimap ? "BAT" : "TAT", "Ban do thu nho goc phai");
+                DrawRow(2, "Ty le giao dien (UI Scale)",scaleOpts[_settingsUiScale],           "Anh huong co chu HUD");
+                break;
+            case 4:
+                DrawRow(0, "Do kho mac dinh",  diffOpts[_settingsDifficulty],   "Ap dung khi vao tran moi");
+                DrawRow(1, "Rung man hinh",    _settingsScreenShake ? "BAT" : "TAT", "Rung khi bi damage / boss");
+                break;
+        }
+
+        if (_settingsShowFps || _settingsCategoryIndex == 1)
+        {
+            string fps = "FPS: " + ((int)_settingsFps).ToString();
+            Vector2 fv = _scoreFont.MeasureString(fps);
+            _spriteBatch.DrawString(_scoreFont, fps, new Vector2(780 - fv.X, 553), Color.LimeGreen);
+        }
+
+        string back = "ESC - Quay lai Sanh Cho";
+        Vector2 bv = _scoreFont.MeasureString(back);
+        _spriteBatch.DrawString(_scoreFont, back, new Vector2(400 - bv.X / 2, 553), Color.Gray * 0.7f);
+    }
+

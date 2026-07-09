@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XnaContent xmlns:Graphics="Microsoft.Xna.Framework.Content.Pipeline.Graphics">
+  <Asset Type="Graphics:FontDescription">
+    <FontName>Arial</FontName>
+    <Size>14</Size>
+    <Spacing>0</Spacing>
+    <UseKerning>true</UseKerning>
+    <Style>Regular</Style>
+    <CharacterRegions>
+      <!-- Standard ASCII -->
+      <CharacterRegion>
+        <Start>&#32;</Start>
+        <End>&#126;</End>
+      </CharacterRegion>
+      <!-- Latin-1 Supplement (extended characters) -->
+      <CharacterRegion>
+        <Start>&#127;</Start>
+        <End>&#255;</End>
+      </CharacterRegion>
+      <!-- Latin Extended-A & B -->
+      <CharacterRegion>
+        <Start>&#256;</Start>
+        <End>&#591;</End>
+      </CharacterRegion>
+      <!-- Latin Extended Additional (Vietnamese precomposed accents like ạ, ả, ỗ, ệ) -->
+      <CharacterRegion>
+        <Start>&#7680;</Start>
+        <End>&#7935;</End>
+      </CharacterRegion>
+      <!-- Star Symbol ★ for Boss Chest UI -->
+      <CharacterRegion>
+        <Start>&#9733;</Start>
+        <End>&#9733;</End>
+      </CharacterRegion>
+      <!-- Triangle Arrow ▶ for menu selection -->
+      <CharacterRegion>
+        <Start>&#9654;</Start>
+        <End>&#9654;</End>
+      </CharacterRegion>
+    </CharacterRegions>
+  </Asset>
+</XnaContent>

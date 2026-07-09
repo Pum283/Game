@@ -1,0 +1,625 @@
+#----------------------------- Global Properties ----------------------------#
+
+/outputDir:bin/$(Platform)
+/intermediateDir:obj/$(Platform)
+/platform:DesktopGL
+/config:
+/profile:Reach
+/compress:False
+
+#-------------------------------- References --------------------------------#
+
+
+#---------------------------------- Content ---------------------------------#
+
+#begin ScoreFont.spritefont
+/importer:FontDescriptionImporter
+/processor:FontDescriptionProcessor
+/build:ScoreFont.spritefont
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/Knight/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/Knight/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Monster/Slime/Slime.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Monster/Slime/Slime.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Monster/YellowsBat/SpriteSheet.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Monster/YellowsBat/SpriteSheet.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/Skeleton/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/Skeleton/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/DemonRed/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/DemonRed/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/Items/Treasure/BigTreasureChest.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Items/Treasure/BigTreasureChest.png
+
+#begin Ninja Adventure - Asset Pack/Items/Treasure/GoldCoin.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Items/Treasure/GoldCoin.png
+
+#begin Ninja Adventure - Asset Pack/Items/Resource/GemGreen.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Items/Resource/GemGreen.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetField.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetField.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetDesert.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetDesert.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetDungeon.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetDungeon.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetNature.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetNature.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetFloor.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetFloor.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetWater.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetWater.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetRelief.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetRelief.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetHouse.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetHouse.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetElement.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetElement.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetVillageAbandoned.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/TilesetVillageAbandoned.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/Interior/TilesetInteriorFloor.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/Interior/TilesetInteriorFloor.png
+
+#begin Ninja Adventure - Asset Pack/Backgrounds/Tilesets/Interior/TilesetWallSimple.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Backgrounds/Tilesets/Interior/TilesetWallSimple.png
+
+#begin Ninja Adventure - Asset Pack/FX/Projectile/EnergyBall.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/FX/Projectile/EnergyBall.png
+
+#begin Ninja Adventure - Asset Pack/FX/Projectile/Fireball.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/FX/Projectile/Fireball.png
+
+#begin Ninja Adventure - Asset Pack/FX/Projectile/Arrow.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/FX/Projectile/Arrow.png
+
+#begin Ninja Adventure - Asset Pack/Items/Weapons/Axe/Sprite.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Items/Weapons/Axe/Sprite.png
+
+#begin Ninja Adventure - Asset Pack/FX/Elemental/Water/SpriteSheet.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/FX/Elemental/Water/SpriteSheet.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/NinjaBlue/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/NinjaBlue/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/NinjaRed/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/NinjaRed/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/Samurai/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/Samurai/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/Monk/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/Monk/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/Actor/Character/KnightGold/SeparateAnim/Walk.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Actor/Character/KnightGold/SeparateAnim/Walk.png
+
+#begin Ninja Adventure - Asset Pack/FX/Projectile/BigShuriken.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/FX/Projectile/BigShuriken.png
+
+#begin Ninja Adventure - Asset Pack/FX/Projectile/BigKunai.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/FX/Projectile/BigKunai.png
+
+#begin Ninja Adventure - Asset Pack/Items/Object/Book.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Items/Object/Book.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/MagicWeapon.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/MagicWeapon.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Camouflage.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Camouflage.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Fireball.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Fireball.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/OrbLight.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/OrbLight.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/OrbWater.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/OrbWater.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Shuriken.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Shuriken.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/BookLight.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/BookLight.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Kunai.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Kunai.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Boot.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Boot.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Ring.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Ring.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Armor.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Armor.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/AttackUpgrade.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/AttackUpgrade.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Hook.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Hook.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Permutation.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Permutation.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/LuckUpgrade.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/LuckUpgrade.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Heal.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Heal.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/DefenseUpgrade.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/DefenseUpgrade.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Arrow.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Arrow.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Vision.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Vision.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Scroll.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Items & Weapon/Scroll.png
+
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Job & Action/Potion.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Job & Action/Potion.png
+
+#begin Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Upgrade.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:TextureFormat=Color
+/build:Ninja Adventure - Asset Pack/Ui/Skill Icon/Spell/Upgrade.png
+
