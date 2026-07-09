@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -338,11 +338,13 @@ public class Game1 : Game
     private float _gameTimer = 0f; // Track run time in seconds
     private int _killCount = 0;
     private KeyboardState _previousKeyboardState;
+    private MouseState _previousMouseState;
     
     // Golem boss spawns tracking
     private bool _golemSpawned1 = false;
     private bool _golemSpawned2 = false;
     private bool _golemSpawned3 = false;
+    private int _lastHordeInterval = 0;
 
     // Modular Weapons List
     private List<Weapon> _weapons;
@@ -498,6 +500,7 @@ public class Game1 : Game
         _golemSpawned2 = false;
         _golemSpawned3 = false;
         _lastSpawnedFiveMinBossInterval = 0;
+        _lastHordeInterval = 0;
         _bossWarningTimer = 0f;
         _bossWarningText = "";
         _killCount = 0;
@@ -705,11 +708,60 @@ public class Game1 : Game
         }
 
         _previousKeyboardState = keyboardState;
+        _previousMouseState = Mouse.GetState();
         base.Update(gameTime);
     }
 
     private void UpdateLobby(KeyboardState keyboardState)
     {
+        // Mouse selection and click
+        var mousePos = GetUiMousePosition();
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                var rect = new Rectangle(65, 235 + i * 46, 360, 40);
+                if (rect.Contains(mousePos))
+                {
+                    _selectedLobbyIndex = i;
+                    var mouseState = Mouse.GetState();
+                    if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                    {
+                        if (i == 0) // Start Play
+                        {
+                            ResetGame();
+                            _gameState = GameState.Playing;
+                        }
+                        else if (i == 1) // Select Stage
+                        {
+                            _selectedStageIndex = _currentStage - 1;
+                            _gameState = GameState.StageSelect;
+                        }
+                        else if (i == 2) // Shop upgrades
+                        {
+                            _selectedShopIndex = 0;
+                            _gameState = GameState.ShopMenu;
+                        }
+                        else if (i == 3) // Skin Shop
+                        {
+                            _selectedSkinIndex = 0;
+                            _gameState = GameState.SkinShop;
+                        }
+                        else if (i == 4) // Settings
+                        {
+                            _settingsCategoryIndex = 0;
+                            _settingsItemIndex = 0;
+                            _gameState = GameState.Settings;
+                        }
+                        else if (i == 5) // Exit
+                        {
+                            Exit();
+                        }
+                        return;
+                    }
+                }
+            }
+        }
         if ((keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
             (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up)))
         {
@@ -760,6 +812,35 @@ public class Game1 : Game
     private void UpdateStageSelect(KeyboardState keyboardState)
     {
         int totalStages = StageConfigs.Length;
+        // Mouse selection and click
+        var mousePos = GetUiMousePosition();
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            int listStartY = 72 + 14;
+            int rowHeight = 32;
+            int col1X = 18 + 14;
+            int col2X = 18 + 188;
+            for (int i = 0; i < totalStages; i++)
+            {
+                int col = i / 5;
+                int row = i % 5;
+                int listX = col == 0 ? col1X : col2X;
+                var rect = new Rectangle(listX - 4, listStartY + row * rowHeight - 2, 168, rowHeight);
+                if (rect.Contains(mousePos))
+                {
+                    _selectedStageIndex = i;
+                    var mouseState = Mouse.GetState();
+                    if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                    {
+                        _currentStage = _selectedStageIndex + 1;
+                        _saveData.LastSelectedStage = _currentStage;
+                        _saveData.Save();
+                        _gameState = GameState.Lobby;
+                        return;
+                    }
+                }
+            }
+        }
         _selectedStageIndex = Math.Clamp(_selectedStageIndex, 0, totalStages - 1);
 
         if ((keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
@@ -800,6 +881,88 @@ public class Game1 : Game
     private void UpdateShopMenu(KeyboardState keyboardState)
     {
         int totalItems = 13;
+        // Mouse selection and click
+        var mousePos = GetUiMousePosition();
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            // Left column (0-8)
+            int col1X = 40;
+            int colY = 105;
+            int colW = 340;
+            for (int i = 0; i < 9; i++)
+            {
+                int itemY = colY + 45 + i * 36;
+                var rect = new Rectangle(col1X + 5, itemY - 2, colW - 10, 30);
+                if (rect.Contains(mousePos))
+                {
+                    _selectedShopIndex = i;
+                    var mouseState = Mouse.GetState();
+                    if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                    {
+                        BuyPermanentUpgrade(i);
+                        return;
+                    }
+                }
+            }
+
+            // Right column (9-11 Consumables)
+            int col2X = 420;
+            for (int i = 0; i < 3; i++)
+            {
+                int itemY = colY + 48 + i * 55;
+                var rect = new Rectangle(col2X + 5, itemY - 2, colW - 10, 48);
+                if (rect.Contains(mousePos))
+                {
+                    _selectedShopIndex = 9 + i;
+                    var mouseState = Mouse.GetState();
+                    if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                    {
+                        switch (9 + i)
+                        {
+                            case 9:
+                                if (_saveData.Gold >= 100 && _saveData.ReviveCount < 3)
+                                {
+                                    _saveData.Gold -= 100;
+                                    _saveData.ReviveCount++;
+                                    _saveData.Save();
+                                }
+                                break;
+                            case 10:
+                                if (_saveData.Gold >= 30 && _saveData.StartingPotions < 5)
+                                {
+                                    _saveData.Gold -= 30;
+                                    _saveData.StartingPotions++;
+                                    _saveData.Save();
+                                }
+                                break;
+                            case 11:
+                                if (_saveData.Gold >= 80 && !_saveData.GoldBoosterActive)
+                                {
+                                    _saveData.Gold -= 80;
+                                    _saveData.GoldBoosterActive = true;
+                                    _saveData.Save();
+                                }
+                                break;
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // Exit button (12)
+            int backY = colY + 310;
+            var backRect = new Rectangle(col2X + 20, backY, colW - 40, 50);
+            if (backRect.Contains(mousePos))
+            {
+                _selectedShopIndex = 12;
+                var mouseState = Mouse.GetState();
+                if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                {
+                    _gameState = GameState.Lobby;
+                    return;
+                }
+            }
+        }
         bool up = (keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
                   (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up));
         bool down = (keyboardState.IsKeyDown(Keys.S) && _previousKeyboardState.IsKeyUp(Keys.S)) ||
@@ -1041,6 +1204,9 @@ public class Game1 : Game
                 {
                     _saveData.BestSurvivalTime = _gameTimer;
                 }
+                
+                // Save map-specific records
+                _saveData.UpdateStageRecord(_currentStage, _gameTimer, _killCount, _goldCollectedThisRun);
                 _saveData.Save();
                 
                 _gameState = GameState.GameOver;
@@ -1073,7 +1239,7 @@ public class Game1 : Game
         }
 
         // 2.6 Giant Boss Spawn check (Stage-dependent interval)
-        int bossInt = GetCurrentStageConfig().BossSpawnIntervalSeconds;
+        int bossInt = _gameTimer >= 1800f ? 60 : GetCurrentStageConfig().BossSpawnIntervalSeconds;
         int currentBossInterval = (int)(_gameTimer / bossInt);
         if (currentBossInterval > _lastSpawnedFiveMinBossInterval)
         {
@@ -1114,12 +1280,36 @@ public class Game1 : Game
         float currentInterval = _spawnInterval * config.SpawnIntervalMultiplier;
         if (_spawnTimer >= currentInterval)
         {
-            for (int i = 0; i < config.SpawnBatchCount; i++)
+            // Quantity increases slightly over time. 
+            // Before 30 min: +1 enemy every 90 seconds (capped at +5).
+            // After 30 min (Endless): +1 enemy every 60 seconds of survival past 30 min (capped at +40).
+            int batchBonus;
+            if (_gameTimer < 1800f)
+            {
+                batchBonus = Math.Min((int)(_gameTimer / 90f), 5);
+            }
+            else
+            {
+                float timePast30Min = _gameTimer - 1800f;
+                int endlessBonus = (int)(timePast30Min / 60f);
+                batchBonus = Math.Min(5 + endlessBonus, 40);
+            }
+            int currentBatchCount = config.SpawnBatchCount + batchBonus;
+
+            for (int i = 0; i < currentBatchCount; i++)
             {
                 SpawnTimeBasedEnemy();
             }
             _spawnTimer = 0f;
             _spawnInterval = MathHelper.Max(_spawnInterval - 0.008f, 0.5f); // Slower difficulty progression
+        }
+
+        // Horde spawn check (every 120 seconds)
+        int currentHordeInterval = (int)(_gameTimer / 120f);
+        if (currentHordeInterval > _lastHordeInterval)
+        {
+            SpawnHordeWave();
+            _lastHordeInterval = currentHordeInterval;
         }
 
         // Boss spawns checking based on stage index
@@ -1342,7 +1532,9 @@ public class Game1 : Game
         }
 
         // 10. Update Gems
-        float magnetRange = 120f * (1f + _player.AttractorbLevel * 0.25f);
+        float magnetRange = _player.AttractorbLevel >= 5 
+            ? 99999f 
+            : 120f * (1f + _player.AttractorbLevel * 0.25f) * _player.PermanentMagnetBoost;
         for (int i = _gems.Count - 1; i >= 0; i--)
         {
             var gem = _gems[i];
@@ -1951,6 +2143,40 @@ public class Game1 : Game
         double angle = _random.NextDouble() * Math.PI * 2;
         float dist = stage == 1 ? 560f : 500f;
         return _player.Center + new Vector2((float)Math.Cos(angle) * dist, (float)Math.Sin(angle) * dist);
+    }
+
+    private void SpawnHordeWave()
+    {
+        var config = GetCurrentStageConfig();
+        int count = 25 + _random.Next(11);
+        EnemyType type = PickEnemyTypeForStage(config.Index);
+        
+        if (config.Index != 3 && config.Index != 9 && _random.Next(2) == 0)
+        {
+            type = EnemyType.Bat; 
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            double angle = (i * Math.PI * 2) / count;
+            Vector2 spawnPos = _player.Center + new Vector2(
+                (float)Math.Cos(angle) * 450f,
+                (float)Math.Sin(angle) * 450f
+            );
+            
+            spawnPos = FindNearestWalkablePosition(spawnPos, 32, 32);
+            var enemy = new Enemy(spawnPos, type);
+            enemy.Position = FindNearestWalkablePosition(enemy.Position, enemy.Width, enemy.Height);
+            if (!IsWalkableAndFree(enemy.Position, enemy.Width, enemy.Height))
+                continue;
+
+            ApplyStageEnemyScaling(enemy);
+            enemy.Speed *= 1.25f; 
+            _enemies.Add(enemy);
+        }
+
+        _bossWarningText = "CANH BAO: DOT CAN QUES LON BAT DAU!";
+        _bossWarningTimer = 4f;
     }
 
     private void SpawnGolemBoss()
@@ -2573,6 +2799,9 @@ public class Game1 : Game
             {
                 _saveData.BestSurvivalTime = _gameTimer;
             }
+            
+            // Save map-specific records
+            _saveData.UpdateStageRecord(_currentStage, _gameTimer, _killCount, _goldCollectedThisRun);
             _saveData.Save();
             _gameState = GameState.Lobby;
         }
@@ -2807,6 +3036,21 @@ public class Game1 : Game
         _spriteBatch.DrawString(_scoreFont, $"+ Quai moi dot: x{batchCount}", new Vector2(detailBox.X + detailPad, contentY), Color.Tomato);
         contentY += 22;
         _spriteBatch.DrawString(_scoreFont, $"+ Boss dai vuong: moi {bossSec}s", new Vector2(detailBox.X + detailPad, contentY), Color.Tomato);
+
+        // Draw Stage records
+        var record = _saveData.GetStageRecord(config.Index);
+        int recMin = (int)record.BestSurvivalTime / 60;
+        int recSec = (int)record.BestSurvivalTime % 60;
+
+        contentY += 32;
+        _spriteBatch.DrawString(_scoreFont, "KY LUC MAN CHOI:", new Vector2(detailBox.X + detailPad, contentY), Color.Gold);
+        contentY += 24;
+        _spriteBatch.DrawString(_scoreFont, $"+ Sinh ton lau nhat: {recMin:00}:{recSec:00}", new Vector2(detailBox.X + detailPad, contentY), Color.GreenYellow);
+        contentY += 22;
+        _spriteBatch.DrawString(_scoreFont, $"+ Diet quai nhieu nhat: {record.BestKills} Kills", new Vector2(detailBox.X + detailPad, contentY), Color.LightSkyBlue);
+        contentY += 22;
+        _spriteBatch.DrawString(_scoreFont, $"+ Vang thu thap nhat: {record.BestGold} Vang", new Vector2(detailBox.X + detailPad, contentY), Color.Yellow);
+
         RegisterTooltip(detailBox, config.Name, GetStageTooltipBody(config));
 
         string backLine1 = "W/S: Chon man | A/D: Cot";
@@ -3078,7 +3322,10 @@ public class Game1 : Game
         }
 
         // 9. Draw Player
-        _player.Draw(_spriteBatch, _playerTexture);
+        Texture2D activePlayerTexture = (_skinTextures != null && _skinTextures.ContainsKey(_saveData.SelectedSkin)) 
+            ? _skinTextures[_saveData.SelectedSkin] 
+            : _playerTexture;
+        _player.Draw(_spriteBatch, activePlayerTexture);
 
         // 10. Draw Garlic Aura
         foreach (var weapon in _weapons)
@@ -3601,6 +3848,113 @@ public class Game1 : Game
             _spriteBatch.DrawString(_scoreFont, endlessText, new Vector2(400 - endlessSize.X / 2, 50), Color.Orange);
         }
 
+        // Boss Countdown Timer
+        var config = GetCurrentStageConfig();
+        
+        // Find next stage boss spawn time
+        float nextStageBossTime = -1f;
+        if (config.Index <= 3) // Easy: 1 boss at 120s
+        {
+            if (!_golemSpawned1)
+                nextStageBossTime = 120f;
+        }
+        else if (config.Index <= 6) // Medium: 2 bosses at 90s and 180s
+        {
+            if (!_golemSpawned1)
+                nextStageBossTime = 90f;
+            else if (!_golemSpawned2)
+                nextStageBossTime = 180f;
+        }
+        else // Hard: 3 bosses at 60s, 120s, and 180s
+        {
+            if (!_golemSpawned1)
+                nextStageBossTime = 60f;
+            else if (!_golemSpawned2)
+                nextStageBossTime = 120f;
+            else if (!_golemSpawned3)
+                nextStageBossTime = 180f;
+        }
+
+        // Find next Giant Boss / Super Boss spawn time
+        int bossInt = _gameTimer >= 1800f ? 60 : config.BossSpawnIntervalSeconds;
+        float nextSuperBossTime = (_lastSpawnedFiveMinBossInterval + 1) * bossInt;
+
+        // Choose the closest boss spawn time
+        float nextBossTime = nextSuperBossTime;
+        bool isSuperBossImpending = true;
+        if (nextStageBossTime != -1f && nextStageBossTime < nextSuperBossTime)
+        {
+            nextBossTime = nextStageBossTime;
+            isSuperBossImpending = false;
+        }
+
+        float remainingTime = nextBossTime - _gameTimer;
+        if (remainingTime < 0f) remainingTime = 0f;
+
+        // Check if there is currently any GolemBoss active on the map
+        bool hasActiveBoss = false;
+        if (_enemies != null)
+        {
+            for (int i = 0; i < _enemies.Count; i++)
+            {
+                if (_enemies[i]?.Type == EnemyType.GolemBoss)
+                {
+                    hasActiveBoss = true;
+                    break;
+                }
+            }
+        }
+
+        string bossTimerText = "";
+        Color bossTimerColor = Color.LightPink;
+
+        if (hasActiveBoss)
+        {
+            bossTimerText = "TRUM XUAT HIEN!";
+            bossTimerColor = Color.Lerp(Color.Red, Color.Orange, (float)Math.Sin(gameTime.TotalGameTime.TotalSeconds * 12.0) * 0.5f + 0.5f);
+        }
+        else
+        {
+            int bossMin = (int)remainingTime / 60;
+            int bossSec = (int)remainingTime % 60;
+            string label = isSuperBossImpending ? "TRUM DAI VUONG" : "TRUM STAGE";
+            bossTimerText = $"{label}: {bossMin:00}:{bossSec:00}";
+            
+            if (remainingTime <= 10f)
+            {
+                // Pulsing warning color when boss is very close
+                bossTimerColor = Color.Lerp(Color.LightPink, Color.Red, (float)Math.Sin(gameTime.TotalGameTime.TotalSeconds * 10.0) * 0.5f + 0.5f);
+            }
+            else
+            {
+                bossTimerColor = Color.LightPink;
+            }
+        }
+
+        Vector2 bossTimerSize = _scoreFont.MeasureString(bossTimerText);
+        float bossTimerY = _inEndlessMode ? 75f : 50f;
+        _spriteBatch.DrawString(_scoreFont, bossTimerText, new Vector2(400 - bossTimerSize.X / 2, bossTimerY), bossTimerColor);
+
+        // Horde Countdown Timer
+        float nextHordeTime = (_lastHordeInterval + 1) * 120f;
+        float remainingHordeTime = nextHordeTime - _gameTimer;
+        if (remainingHordeTime < 0f) remainingHordeTime = 0f;
+
+        int hordeMin = (int)remainingHordeTime / 60;
+        int hordeSec = (int)remainingHordeTime % 60;
+        string hordeTimerText = $"CAN QUES: {hordeMin:00}:{hordeSec:00}";
+        Color hordeTimerColor = Color.LightGray;
+
+        if (remainingHordeTime <= 10f)
+        {
+            // Pulsing warning color when horde sweep is very close
+            hordeTimerColor = Color.Lerp(Color.LightGray, Color.Orange, (float)Math.Sin(gameTime.TotalGameTime.TotalSeconds * 10.0) * 0.5f + 0.5f);
+        }
+
+        Vector2 hordeTimerSize = _scoreFont.MeasureString(hordeTimerText);
+        float hordeTimerY = bossTimerY + 25f;
+        _spriteBatch.DrawString(_scoreFont, hordeTimerText, new Vector2(400 - hordeTimerSize.X / 2, hordeTimerY), hordeTimerColor);
+
         // Blinking Boss Warning alert
         if (_bossWarningTimer > 0f && !string.IsNullOrEmpty(_bossWarningText))
         {
@@ -3768,6 +4122,30 @@ public class Game1 : Game
         return hint;
     }
 
+    private Color GetTerrainMinimapColor(byte cell, int stage)
+    {
+        switch (cell)
+        {
+            case MapTerrain.Void:      return new Color(15, 15, 25);
+            case MapTerrain.Water:     return stage == 10 ? new Color(100, 160, 220) : new Color(30, 80, 180);
+            case MapTerrain.Lava:      return new Color(220, 55, 12);
+            case MapTerrain.Poison:    return new Color(150, 60, 180);
+            case MapTerrain.Spike:     return new Color(110, 110, 115);
+            case MapTerrain.Ice:       return new Color(140, 200, 255);
+            case MapTerrain.Cliff:     return stage == 3 ? new Color(90, 60, 40) : new Color(80, 75, 70);
+            case MapTerrain.Sand:      return new Color(210, 180, 120);
+            case MapTerrain.Dirt:      return (stage == 2 || stage == 4) ? new Color(110, 80, 55) : new Color(46, 125, 50);
+            case MapTerrain.Stone:     return new Color(90, 95, 100);
+            case MapTerrain.Snow:      return new Color(230, 240, 250);
+            case MapTerrain.Dungeon:   return new Color(75, 75, 80);
+            case MapTerrain.Path:      return new Color(160, 140, 115);
+            case MapTerrain.WoodFloor: return new Color(130, 95, 65);
+            case MapTerrain.Moss:      return new Color(40, 90, 60);
+            case MapTerrain.Grass2:    return new Color(46, 115, 46);
+            default:                   return new Color(34, 110, 34);
+        }
+    }
+
     private void DrawMiniMap(GameTime gameTime)
     {
         if (!_settingsShowMinimap)
@@ -3779,8 +4157,29 @@ public class Game1 : Game
         int mh = 150;
         float scale = 150f / 2000f; // Scale factor
 
-        // Semi-transparent black background
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(mx, my, mw, mh), Color.Black * 0.5f);
+        // 1. Draw terrain grid as the base map background
+        if (_terrainGrid != null)
+        {
+            int stage = GetCurrentStageConfig().TerrainVariant;
+            for (int tx = 0; tx < _terrainCols; tx++)
+            {
+                for (int ty = 0; ty < _terrainRows; ty++)
+                {
+                    int cellX = mx + (tx * mw) / _terrainCols;
+                    int cellY = my + (ty * mh) / _terrainRows;
+                    int cellW = ((tx + 1) * mw) / _terrainCols - (tx * mw) / _terrainCols;
+                    int cellH = ((ty + 1) * mh) / _terrainRows - (ty * mh) / _terrainRows;
+                    
+                    Color c = GetTerrainMinimapColor(_terrainGrid[tx, ty], stage);
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(cellX, cellY, cellW, cellH), c * 0.85f);
+                }
+            }
+        }
+        else
+        {
+            // Semi-transparent black background fallback
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(mx, my, mw, mh), Color.Black * 0.5f);
+        }
         
         // Golden border frame
         _spriteBatch.Draw(_pixelTexture, new Rectangle(mx, my, mw, 2), Color.Gold * 0.6f);
@@ -3795,7 +4194,7 @@ public class Game1 : Game
             int oy = my + (int)(obs.Position.Y * scale);
             int ow = (int)(obs.Width * scale);
             int oh = (int)(obs.Height * scale);
-            _spriteBatch.Draw(_pixelTexture, new Rectangle(ox, oy, Math.Max(2, ow), Math.Max(2, oh)), Color.Gray * 0.7f);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(ox, oy, Math.Max(2, ow), Math.Max(2, oh)), new Color(50, 50, 50) * 0.9f);
         }
 
         // 3. Draw Chests (Pulsing gold dots)
@@ -3820,7 +4219,7 @@ public class Game1 : Game
             }
             else
             {
-                _spriteBatch.Draw(_pixelTexture, new Rectangle(ex - 1, ey - 1, 2, 2), Color.Red * 0.8f);
+                _spriteBatch.Draw(_pixelTexture, new Rectangle(ex - 1, ey - 1, 2, 2), Color.Red);
             }
         }
 
@@ -4151,10 +4550,16 @@ public class Game1 : Game
         float spdRate = config.MonsterSpeedMultiplier;
         float hpRate = config.MonsterHPMultiplier;
         float spawnRate = 1f / config.SpawnIntervalMultiplier;
+        
+        var record = _saveData.GetStageRecord(config.Index);
+        int recMin = (int)record.BestSurvivalTime / 60;
+        int recSec = (int)record.BestSurvivalTime % 60;
+
         return config.Description + "\n\n"
             + $"Toc do quai: x{spdRate:0.00} | HP quai: x{hpRate:0.00}\n"
             + $"Tan suat quai: x{spawnRate:0.00} | Quai/dot: x{config.SpawnBatchCount}\n"
-            + $"Boss dai vuong: moi {config.BossSpawnIntervalSeconds}s";
+            + $"Boss dai vuong: moi {config.BossSpawnIntervalSeconds}s\n\n"
+            + $"Ky luc: {recMin:00}:{recSec:00} | {record.BestKills} Kills | {record.BestGold} Vang";
     }
 
     private void DrawTruncatedString(string text, Vector2 position, float maxWidth, Color color)
@@ -4321,6 +4726,50 @@ public class Game1 : Game
     private void UpdateSkinShop(KeyboardState keyboardState)
     {
         int count = _skinOptions.Count + 1; // plus 1 for the "Back" option
+        // Mouse selection and click
+        var mousePos = GetUiMousePosition();
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            int sx = 50;
+            int sy = 180;
+            for (int i = 0; i < count; i++)
+            {
+                var rect = new Rectangle(sx, sy + i * 48 - 2, 330, 44);
+                if (rect.Contains(mousePos))
+                {
+                    _selectedSkinIndex = i;
+                    var mouseState = Mouse.GetState();
+                    if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                    {
+                        if (i == _skinOptions.Count) // Back option
+                        {
+                            _gameState = GameState.Lobby;
+                        }
+                        else
+                        {
+                            var skin = _skinOptions[i];
+                            bool isUnlocked = _saveData.UnlockedSkins.Contains(skin.Code);
+                            if (isUnlocked)
+                            {
+                                _saveData.SelectedSkin = skin.Code;
+                                _saveData.Save();
+                            }
+                            else
+                            {
+                                if (_saveData.Gold >= skin.Cost)
+                                {
+                                    _saveData.Gold -= skin.Cost;
+                                    _saveData.UnlockedSkins.Add(skin.Code);
+                                    _saveData.SelectedSkin = skin.Code;
+                                    _saveData.Save();
+                                }
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+        }
         if ((keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
             (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up)))
         {
@@ -4386,12 +4835,14 @@ public class Game1 : Game
             else if (_selectedPauseIndex == 1) // Exit Stage (returns to Lobby and saves current gold)
             {
                 _saveData.Gold += _goldCollectedThisRun;
+                _saveData.UpdateStageRecord(_currentStage, _gameTimer, _killCount, _goldCollectedThisRun);
                 _saveData.Save();
                 _gameState = GameState.Lobby;
             }
             else if (_selectedPauseIndex == 2) // Exit Game
             {
                 _saveData.Gold += _goldCollectedThisRun;
+                _saveData.UpdateStageRecord(_currentStage, _gameTimer, _killCount, _goldCollectedThisRun);
                 _saveData.Save();
                 Exit();
             }

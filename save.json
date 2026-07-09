@@ -1,22 +1,25 @@
 {
-  "Gold": 497,
-  "MaxHPUpgradeLevel": 5,
-  "DamageUpgradeLevel": 5,
-  "SpeedUpgradeLevel": 5,
-  "ArmorUpgradeLevel": 2,
-  "MagnetUpgradeLevel": 5,
-  "CooldownUpgradeLevel": 5,
-  "GrowthUpgradeLevel": 5,
-  "GreedUpgradeLevel": 4,
-  "LuckUpgradeLevel": 5,
-  "ReviveCount": 0,
+  "Gold": 97449,
+  "MaxHPUpgradeLevel": 10,
+  "DamageUpgradeLevel": 10,
+  "SpeedUpgradeLevel": 10,
+  "ArmorUpgradeLevel": 10,
+  "MagnetUpgradeLevel": 10,
+  "CooldownUpgradeLevel": 10,
+  "GrowthUpgradeLevel": 10,
+  "GreedUpgradeLevel": 10,
+  "LuckUpgradeLevel": 10,
+  "ReviveCount": 3,
   "StartingPotions": 0,
   "GoldBoosterActive": false,
-  "SelectedSkin": "NinjaRed",
+  "SelectedSkin": "KnightGold",
   "UnlockedSkins": [
     "Knight",
     "NinjaRed",
-    "NinjaBlue"
+    "NinjaBlue",
+    "Samurai",
+    "Monk",
+    "KnightGold"
   ],
   "ResolutionIndex": 0,
   "Fullscreen": false,
@@ -31,6 +34,58 @@
   "UiScale": 1,
   "Difficulty": 0,
   "ScreenShake": true,
-  "BestSurvivalTime": 600.27264,
-  "LastSelectedStage": 1
+  "BestSurvivalTime": 1932.9183,
+  "LastSelectedStage": 1,
+  "StageRecords": {
+    "2": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "1": {
+      "BestSurvivalTime": 5941.847,
+      "BestKills": 244040,
+      "BestGold": 97017
+    },
+    "3": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "4": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "5": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "6": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "7": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "8": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "9": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    },
+    "10": {
+      "BestSurvivalTime": 0,
+      "BestKills": 0,
+      "BestGold": 0
+    }
+  }
 }

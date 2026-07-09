@@ -47,6 +47,41 @@ public class SaveData
     public float BestSurvivalTime { get; set; } = 0f;
     public int LastSelectedStage { get; set; } = 1;
 
+    // Map-specific records
+    public System.Collections.Generic.Dictionary<string, StageRecord> StageRecords { get; set; } = new();
+
+    public StageRecord GetStageRecord(int stageIndex)
+    {
+        string key = stageIndex.ToString();
+        if (StageRecords == null)
+        {
+            StageRecords = new System.Collections.Generic.Dictionary<string, StageRecord>();
+        }
+        if (!StageRecords.TryGetValue(key, out var record))
+        {
+            record = new StageRecord();
+            StageRecords[key] = record;
+        }
+        return record;
+    }
+
+    public void UpdateStageRecord(int stageIndex, float survivalTime, int kills, int gold)
+    {
+        var record = GetStageRecord(stageIndex);
+        if (survivalTime > record.BestSurvivalTime)
+        {
+            record.BestSurvivalTime = survivalTime;
+        }
+        if (kills > record.BestKills)
+        {
+            record.BestKills = kills;
+        }
+        if (gold > record.BestGold)
+        {
+            record.BestGold = gold;
+        }
+    }
+
     private static readonly string SaveFilePath = "save.json";
 
     public static SaveData Load()
@@ -80,4 +115,11 @@ public class SaveData
             // Ignore write issues
         }
     }
+}
+
+public class StageRecord
+{
+    public float BestSurvivalTime { get; set; } = 0f;
+    public int BestKills { get; set; } = 0;
+    public int BestGold { get; set; } = 0;
 }
