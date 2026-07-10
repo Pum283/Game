@@ -54,14 +54,14 @@ public class MagicWandWeapon : Weapon
             // Penetration
             int pierce = Level >= 5 ? 2 : 1;
             
-            // Projectile speed scales with Bracer
-            float speed = 350f * (1f + player.BracerLevel * 0.15f);
+            // Projectile speed scales with Bracer and permanent speed boost
+            float speed = 350f * (1f + player.BracerLevel * 0.15f) * player.PermanentProjSpeedBoost;
 
             // Find nearest enemy
             Enemy nearestEnemy = FindNearestEnemy(player.Center, enemies);
             if (nearestEnemy != null)
             {
-                Vector2 target = nearestEnemy.Position + new Vector2(nearestEnemy.Width / 2f, nearestEnemy.Height / 2f);
+                Vector2 target = nearestEnemy.Center;
 
                 // Projectile count: base + Duplicator level
                 int projectilesCount = (Level >= 3 ? 2 : 1) + player.DuplicatorLevel;
@@ -71,7 +71,9 @@ public class MagicWandWeapon : Weapon
                     float spread = (i - (projectilesCount - 1) / 2f) * 16f;
                     Vector2 startOffset = new Vector2(spread, -spread);
                     var p = new Projectile(player.Center + startOffset, target, speed, dmg, isFireball: false, penetrationCount: pierce);
-                    p.MaxRange = 280f + Level * 30f;
+                    p.Width = (int)(p.Width * player.PermanentAreaBoost);
+                    p.Height = (int)(p.Height * player.PermanentAreaBoost);
+                    p.MaxRange = (280f + Level * 30f) * player.PermanentDurationBoost;
                     projectiles.Add(p);
                 }
 
@@ -86,7 +88,7 @@ public class MagicWandWeapon : Weapon
         float minDistSq = float.MaxValue;
         foreach (var enemy in enemies)
         {
-            float distSq = Vector2.DistanceSquared(playerCenter, enemy.Position);
+            float distSq = Vector2.DistanceSquared(playerCenter, enemy.Center);
             if (distSq < minDistSq)
             {
                 minDistSq = distSq;
@@ -120,8 +122,8 @@ public class GarlicWeapon : Weapon
 
         if (_tickTimer >= 0.5f) // Damage every 0.5 seconds
         {
-            // Radius scales with Spellbinder level
-            float radius = (50f + Level * 12f) * (1f + player.SpellbinderLevel * 0.15f);
+            // Radius scales with Spellbinder level and permanent area boost
+            float radius = (50f + Level * 12f) * (1f + player.SpellbinderLevel * 0.15f) * player.PermanentAreaBoost;
             
             // Damage scales with level and Spinach
             float damage = (1.5f + Level * 1.0f);
@@ -131,7 +133,7 @@ public class GarlicWeapon : Weapon
 
             foreach (var enemy in enemies)
             {
-                float dist = Vector2.Distance(player.Center, enemy.Position);
+                float dist = Vector2.Distance(player.Center, enemy.Center);
                 if (dist <= radius)
                 {
                     enemy.HP -= damage;
@@ -139,7 +141,7 @@ public class GarlicWeapon : Weapon
                     // Knockback at Lvl 4+
                     if (Level >= 4)
                     {
-                        Vector2 kbDir = enemy.Position - player.Center;
+                        Vector2 kbDir = enemy.Center - player.Center;
                         if (kbDir != Vector2.Zero)
                         {
                             kbDir.Normalize();
@@ -156,7 +158,7 @@ public class GarlicWeapon : Weapon
     {
         if (Level == 0) return;
 
-        float radius = (50f + Level * 12f) * (1f + player.SpellbinderLevel * 0.15f);
+        float radius = (50f + Level * 12f) * (1f + player.SpellbinderLevel * 0.15f) * player.PermanentAreaBoost;
         int segments = 36;
         for (int i = 0; i < segments; i++)
         {
@@ -197,7 +199,7 @@ public class FireballWeapon : Weapon
             dmg *= (1f + player.SpinachLevel * 0.10f); // Spinach bonus
             
             int pierce = 2 + Level;
-            float speed = (180f + (Level >= 2 ? 60f : 0f)) * (1f + player.BracerLevel * 0.15f);
+            float speed = (180f + (Level >= 2 ? 60f : 0f)) * (1f + player.BracerLevel * 0.15f) * player.PermanentProjSpeedBoost;
 
             for (int c = 0; c < count; c++)
             {
@@ -207,7 +209,9 @@ public class FireballWeapon : Weapon
                     (float)Math.Sin(angle) * 100f
                 );
                 var fb = new Projectile(player.Center, target, speed, dmg, isFireball: true, penetrationCount: pierce);
-                fb.MaxRange = 350f + Level * 30f;
+                fb.Width = (int)(fb.Width * player.PermanentAreaBoost);
+                fb.Height = (int)(fb.Height * player.PermanentAreaBoost);
+                fb.MaxRange = (350f + Level * 30f) * player.PermanentDurationBoost;
                 projectiles.Add(fb);
             }
 
@@ -250,19 +254,19 @@ public class AxeWeapon : Weapon
 
             for (int i = 0; i < count; i++)
             {
-                float speedX = random.Next(-180, 180) * (1f + player.BracerLevel * 0.1f);
-                float speedY = -480f * (1f + player.BracerLevel * 0.15f);
+                float speedX = random.Next(-180, 180) * (1f + player.BracerLevel * 0.1f) * player.PermanentProjSpeedBoost;
+                float speedY = -480f * (1f + player.BracerLevel * 0.15f) * player.PermanentProjSpeedBoost;
                 
                 if (count > 1)
                 {
                     float angleFraction = (float)i / (count - 1);
-                    speedX = MathHelper.Lerp(-220f, 220f, angleFraction) * (1f + player.BracerLevel * 0.1f);
+                    speedX = MathHelper.Lerp(-220f, 220f, angleFraction) * (1f + player.BracerLevel * 0.1f) * player.PermanentProjSpeedBoost;
                 }
 
                 Vector2 startPos = player.Center;
                 Vector2 targetPos = startPos + new Vector2(speedX, speedY);
 
-                projectiles.Add(new Projectile(
+                var axe = new Projectile(
                     startPos,
                     targetPos,
                     speed: 1.0f,
@@ -271,7 +275,11 @@ public class AxeWeapon : Weapon
                     isAxe: true,
                     hasGravity: true,
                     penetrationCount: pierce
-                ) { Velocity = new Vector2(speedX, speedY), MaxRange = 350f });
+                ) { Velocity = new Vector2(speedX, speedY), MaxRange = 350f * player.PermanentDurationBoost };
+                
+                axe.Width = (int)(axe.Width * player.PermanentAreaBoost);
+                axe.Height = (int)(axe.Height * player.PermanentAreaBoost);
+                projectiles.Add(axe);
             }
 
             CooldownTimer = interval;
@@ -364,9 +372,9 @@ public class HolyWaterWeapon : Weapon
             float dmg = 5f + Level * 1.5f;
             dmg *= (1f + player.SpinachLevel * 0.10f);
             
-            // Radius and pool duration scale with Spellbinder
-            float radius = (40f + Level * 10f) * (1f + player.SpellbinderLevel * 0.15f);
-            float poolDuration = (3.0f + Level * 0.5f) * (1f + player.SpellbinderLevel * 0.15f);
+            // Radius and pool duration scale with Spellbinder and permanent boosts
+            float radius = (40f + Level * 10f) * (1f + player.SpellbinderLevel * 0.15f) * player.PermanentAreaBoost;
+            float poolDuration = (3.0f + Level * 0.5f) * (1f + player.SpellbinderLevel * 0.15f) * player.PermanentDurationBoost;
             
             int count = (Level >= 3 ? 2 : 1) + player.DuplicatorLevel;
             if (Level == 5) count += 1;
@@ -424,7 +432,7 @@ public class CrossWeapon : Weapon
             dmg *= (1f + player.SpinachLevel * 0.10f); // Spinach bonus
 
             int pierce = 2 + Level; // pierce increases with level
-            float speed = 250f * (1f + player.BracerLevel * 0.15f); // Bracer bonus
+            float speed = 250f * (1f + player.BracerLevel * 0.15f) * player.PermanentProjSpeedBoost; // Bracer bonus
 
             // Target nearest enemy
             Enemy targetEnemy = null;
@@ -433,12 +441,12 @@ public class CrossWeapon : Weapon
                 float minDist = float.MaxValue;
                 foreach (var enemy in enemies)
                 {
-                    float dist = Vector2.Distance(player.Center, enemy.Position);
+                    float dist = Vector2.Distance(player.Center, enemy.Center);
                     if (dist < minDist) { minDist = dist; targetEnemy = enemy; }
                 }
             }
 
-            Vector2 targetPos = targetEnemy != null ? targetEnemy.Position : player.Center + new Vector2(1, 0);
+            Vector2 targetPos = targetEnemy != null ? targetEnemy.Center : player.Center + new Vector2(1, 0);
 
             // Projectiles count: base + Duplicator count
             int count = (Level >= 3 ? 2 : 1) + (Level == 5 ? 1 : 0) + player.DuplicatorLevel;
@@ -451,8 +459,10 @@ public class CrossWeapon : Weapon
                 var p = new Projectile(startPos, targetPos, speed, dmg, penetrationCount: pierce)
                 {
                     IsCross = true,
-                    MaxRange = 360f + Level * 30f
+                    MaxRange = (360f + Level * 30f) * player.PermanentDurationBoost
                 };
+                p.Width = (int)(p.Width * player.PermanentAreaBoost);
+                p.Height = (int)(p.Height * player.PermanentAreaBoost);
                 projectiles.Add(p);
             }
 
@@ -491,7 +501,7 @@ public class BibleWeapon : Weapon
             dmg *= (1f + player.SpinachLevel * 0.10f);
 
             int count = Level + player.DuplicatorLevel; // 1 at L1, 2 at L2...
-            float durationSec = 3.0f + player.SpellbinderLevel * 0.45f; // duration scales with Spellbinder
+            float durationSec = (3.0f + player.SpellbinderLevel * 0.45f) * player.PermanentDurationBoost; // duration scales with Spellbinder
 
             for (int i = 0; i < count; i++)
             {
@@ -503,6 +513,8 @@ public class BibleWeapon : Weapon
                     BibleAngle = angleOffset,
                     MaxRange = durationSec * 100f // 100 units = 1 second
                 };
+                p.Width = (int)(p.Width * player.PermanentAreaBoost);
+                p.Height = (int)(p.Height * player.PermanentAreaBoost);
                 projectiles.Add(p);
             }
 
@@ -542,7 +554,7 @@ public class KnifeWeapon : Weapon
 
             int count = (Level >= 3 ? 2 : 1) + (Level == 5 ? 1 : 0) + player.DuplicatorLevel;
             int pierce = Level >= 4 ? 2 : 1;
-            float speed = 400f * (1f + player.BracerLevel * 0.15f);
+            float speed = 400f * (1f + player.BracerLevel * 0.15f) * player.PermanentProjSpeedBoost;
 
             // Knife flies in keyboard movement direction
             var kb = Keyboard.GetState();
@@ -569,8 +581,10 @@ public class KnifeWeapon : Weapon
                 var p = new Projectile(startPos, targetPos, speed, dmg, penetrationCount: pierce)
                 {
                     IsKnife = true,
-                    MaxRange = 380f + Level * 20f
+                    MaxRange = (380f + Level * 20f) * player.PermanentDurationBoost
                 };
+                p.Width = (int)(p.Width * player.PermanentAreaBoost);
+                p.Height = (int)(p.Height * player.PermanentAreaBoost);
                 projectiles.Add(p);
             }
 

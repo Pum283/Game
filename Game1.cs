@@ -95,9 +95,12 @@ public class Game1 : Game
     // Game states
     private enum GameState
     {
+        LoginRegister,
         Lobby,
         StageSelect,
         ShopMenu,
+        EquipmentShop,
+        DressingRoom,
         SkinShop,
         Settings,
         Playing,
@@ -107,7 +110,19 @@ public class Game1 : Game
         GameOver,
         VictoryChoice
     }
-    private GameState _gameState = GameState.Lobby;
+    private GameState _gameState = GameState.LoginRegister;
+
+    // Login & Register variables
+    private string _loginUsername = "";
+    private string _loginPassword = "";
+    private string _loginConfirmPassword = "";
+    private int _loginActiveField = 0; // 0: Username, 1: Password, 2: Confirm Password
+    private bool _isRegisterMode = false;
+    private string _loginStatusMessage = "";
+    private Color _loginStatusColor = Color.White;
+    private bool _isLoginProcessing = false;
+    private int _selectedLoginOption = 0; // 0: Username, 1: Password, 2: Confirm, 3: Submit, 4: Toggle, 5: Offline, 6: Exit
+    private bool _pendingSettingsApply = false;
     
     // Persistent Progress & Shop
     private SaveData _saveData;
@@ -118,6 +133,8 @@ public class Game1 : Game
     private Dictionary<string, Texture2D> _itemIcons = new Dictionary<string, Texture2D>();
     private int _selectedStageIndex = 0;
     private int _selectedShopIndex = 0;
+    private int _selectedUpgradeIndex = 0;
+    private int _dressingRoomFocus = 0; // 0 = Slots, 1 = Inventory
     private int _currentStage = 1;
 
     private struct StageConfig
@@ -371,6 +388,31 @@ public class Game1 : Game
         _graphics.PreferredBackBufferHeight = 600;
     }
 
+    private void ApplyResolutionChanges()
+    {
+        int[][] res = { 
+            new[]{800,600},
+            new[]{1024,768},
+            new[]{1280,720},
+            new[]{1600,900},
+            new[]{1920,1080}
+        };
+        _settingsResolutionIndex = Math.Clamp(_settingsResolutionIndex, 0, res.Length - 1);
+        int targetW = res[_settingsResolutionIndex][0];
+        int targetH = res[_settingsResolutionIndex][1];
+
+        _graphics.PreferredBackBufferWidth = targetW;
+        _graphics.PreferredBackBufferHeight = targetH;
+        _graphics.IsFullScreen = _settingsFullscreen;
+        _graphics.ApplyChanges();
+
+        if (_mainRenderTarget != null)
+        {
+            _mainRenderTarget.Dispose();
+        }
+        _mainRenderTarget = new RenderTarget2D(GraphicsDevice, targetW, targetH);
+    }
+
     protected override void Initialize()
     {
         _pixelTexture = new Texture2D(GraphicsDevice, 1, 1);
@@ -396,29 +438,50 @@ public class Game1 : Game
         _currentStage = MathHelper.Clamp(_saveData.LastSelectedStage, 1, StageConfigs.Length);
         _selectedStageIndex = _currentStage - 1;
 
-        // Apply resolution
-        int[][] res = { 
-            new[]{800,600}, new[]{1024,768}, new[]{1280,720}, new[]{1280,800},
-            new[]{1366,768}, new[]{1440,900}, new[]{1600,900}, new[]{1920,1080},
-            new[]{2560,1440}, new[]{3840,2160} 
-        };
-        _settingsResolutionIndex = Math.Clamp(_settingsResolutionIndex, 0, res.Length - 1);
-        _graphics.PreferredBackBufferWidth = res[_settingsResolutionIndex][0];
-        _graphics.PreferredBackBufferHeight = res[_settingsResolutionIndex][1];
-        _graphics.IsFullScreen = _settingsFullscreen;
-        _graphics.ApplyChanges();
+        // Apply resolution and recreate render target
+        ApplyResolutionChanges();
 
         // Apply VSync and FpsCap
         IsFixedTimeStep = _settingsVsync;
         SetFpsCap(_settingsFpsCap);
 
-        // Initialize main render target for virtual resolution scaling
-        _mainRenderTarget = new RenderTarget2D(GraphicsDevice, 800, 600);
-
         ResetGame();
 
-        // Start in Lobby instead of starting the game directly
-        _gameState = GameState.Lobby;
+        // Initialize the database asynchronously
+        _ = DatabaseManager.InitializeDatabaseAsync();
+
+        // Subscribe to TextInput events to handle player inputs
+        Window.TextInput += (sender, e) => {
+            if (_gameState == GameState.LoginRegister)
+            {
+                if (e.Key == Keys.Back)
+                {
+                    if (_loginActiveField == 0 && _loginUsername.Length > 0)
+                        _loginUsername = _loginUsername.Substring(0, _loginUsername.Length - 1);
+                    else if (_loginActiveField == 1 && _loginPassword.Length > 0)
+                        _loginPassword = _loginPassword.Substring(0, _loginPassword.Length - 1);
+                    else if (_loginActiveField == 2 && _loginConfirmPassword.Length > 0)
+                        _loginConfirmPassword = _loginConfirmPassword.Substring(0, _loginConfirmPassword.Length - 1);
+                }
+                else if (e.Key == Keys.Tab)
+                {
+                    _loginActiveField = (_loginActiveField + 1) % (_isRegisterMode ? 3 : 2);
+                    _selectedLoginOption = _loginActiveField;
+                }
+                else if (e.Character >= 32 && e.Character <= 126) // printable ASCII
+                {
+                    if (_loginActiveField == 0 && _loginUsername.Length < 20)
+                        _loginUsername += e.Character;
+                    else if (_loginActiveField == 1 && _loginPassword.Length < 30)
+                        _loginPassword += e.Character;
+                    else if (_loginActiveField == 2 && _loginConfirmPassword.Length < 30)
+                        _loginConfirmPassword += e.Character;
+                }
+            }
+        };
+
+        // Start in LoginRegister instead of starting in Lobby directly
+        _gameState = GameState.LoginRegister;
 
         base.Initialize();
     }
@@ -448,11 +511,22 @@ public class Game1 : Game
         _graphics.ApplyChanges();
     }
 
-    private void ResetGame()
+    private void ResetGame(bool startingRun = false)
     {
         // Start player exactly in the middle of the large 2000x2000 map
         Vector2 startPos = new Vector2(MapWidth / 2f - 16, MapHeight / 2f - 16);
         _player = new Player(startPos, _saveData);
+
+        // Consume single-use equipped items
+        if (startingRun && _saveData.EquippedIds != null)
+        {
+            var keys = new List<string>(_saveData.EquippedIds.Keys);
+            foreach (var key in keys)
+            {
+                _saveData.EquippedIds[key] = "";
+            }
+            _saveData.Save();
+        }
 
         _enemies = new List<Enemy>();
         _projectiles = new List<Projectile>();
@@ -625,6 +699,15 @@ public class Game1 : Game
     {
         var keyboardState = Keyboard.GetState();
 
+        // Apply resolution changes on the main thread
+        if (_pendingSettingsApply)
+        {
+            _pendingSettingsApply = false;
+            ApplyResolutionChanges();
+            IsFixedTimeStep = _settingsVsync;
+            SetFpsCap(_settingsFpsCap);
+        }
+
         // ESC key checks for pausing and menu exits
         if (keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
         {
@@ -644,11 +727,13 @@ public class Game1 : Game
                 _saveData.Save();
                 _gameState = GameState.Lobby;
             }
-            else if (_gameState == GameState.ShopMenu || _gameState == GameState.StageSelect || _gameState == GameState.SkinShop)
+            else if (_gameState == GameState.ShopMenu || _gameState == GameState.StageSelect || 
+                     _gameState == GameState.SkinShop || _gameState == GameState.EquipmentShop || 
+                     _gameState == GameState.DressingRoom)
             {
                 _gameState = GameState.Lobby;
             }
-            else if (_gameState == GameState.Lobby)
+            else if (_gameState == GameState.Lobby || _gameState == GameState.LoginRegister)
             {
                 Exit();
             }
@@ -658,6 +743,10 @@ public class Game1 : Game
 
         switch (_gameState)
         {
+            case GameState.LoginRegister:
+                UpdateLoginRegister(keyboardState);
+                break;
+
             case GameState.Lobby:
                 UpdateLobby(keyboardState);
                 break;
@@ -668,6 +757,14 @@ public class Game1 : Game
 
             case GameState.ShopMenu:
                 UpdateShopMenu(keyboardState);
+                break;
+
+            case GameState.EquipmentShop:
+                UpdateEquipmentShop(keyboardState);
+                break;
+
+            case GameState.DressingRoom:
+                UpdateDressingRoom(keyboardState);
                 break;
 
             case GameState.SkinShop:
@@ -701,7 +798,7 @@ public class Game1 : Game
             case GameState.GameOver:
                 if (keyboardState.IsKeyDown(Keys.Enter) || keyboardState.IsKeyDown(Keys.Space))
                 {
-                    ResetGame();
+                    ResetGame(startingRun: true);
                     _gameState = GameState.Playing;
                 }
                 break;
@@ -718,45 +815,16 @@ public class Game1 : Game
         var mousePos = GetUiMousePosition();
         if (mousePos.X != -1 && mousePos.Y != -1)
         {
-            for (int i = 0; i < 6; i++)
+            for (int i = 0; i < 8; i++)
             {
-                var rect = new Rectangle(65, 235 + i * 46, 360, 40);
+                var rect = new Rectangle(65, 240 + i * 33, 360, 28);
                 if (rect.Contains(mousePos))
                 {
                     _selectedLobbyIndex = i;
                     var mouseState = Mouse.GetState();
                     if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
                     {
-                        if (i == 0) // Start Play
-                        {
-                            ResetGame();
-                            _gameState = GameState.Playing;
-                        }
-                        else if (i == 1) // Select Stage
-                        {
-                            _selectedStageIndex = _currentStage - 1;
-                            _gameState = GameState.StageSelect;
-                        }
-                        else if (i == 2) // Shop upgrades
-                        {
-                            _selectedShopIndex = 0;
-                            _gameState = GameState.ShopMenu;
-                        }
-                        else if (i == 3) // Skin Shop
-                        {
-                            _selectedSkinIndex = 0;
-                            _gameState = GameState.SkinShop;
-                        }
-                        else if (i == 4) // Settings
-                        {
-                            _settingsCategoryIndex = 0;
-                            _settingsItemIndex = 0;
-                            _gameState = GameState.Settings;
-                        }
-                        else if (i == 5) // Exit
-                        {
-                            Exit();
-                        }
+                        TriggerLobbyAction(i);
                         return;
                     }
                 }
@@ -765,47 +833,68 @@ public class Game1 : Game
         if ((keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
             (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up)))
         {
-            _selectedLobbyIndex = (_selectedLobbyIndex - 1 + 6) % 6;
+            _selectedLobbyIndex = (_selectedLobbyIndex - 1 + 8) % 8;
         }
         if ((keyboardState.IsKeyDown(Keys.S) && _previousKeyboardState.IsKeyUp(Keys.S)) ||
             (keyboardState.IsKeyDown(Keys.Down) && _previousKeyboardState.IsKeyUp(Keys.Down)))
         {
-            _selectedLobbyIndex = (_selectedLobbyIndex + 1) % 6;
+            _selectedLobbyIndex = (_selectedLobbyIndex + 1) % 8;
         }
 
         if ((keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter)) ||
             (keyboardState.IsKeyDown(Keys.Space) && _previousKeyboardState.IsKeyUp(Keys.Space)))
         {
-            if (_selectedLobbyIndex == 0) // Start Play
+            TriggerLobbyAction(_selectedLobbyIndex);
+        }
+    }
+
+    private void TriggerLobbyAction(int index)
+    {
+        if (index == 0) // Start Play
+        {
+            ResetGame(startingRun: true);
+            _gameState = GameState.Playing;
+        }
+        else if (index == 1) // Select Stage
+        {
+            _selectedStageIndex = _currentStage - 1;
+            _gameState = GameState.StageSelect;
+        }
+        else if (index == 2) // Shop upgrades
+        {
+            _selectedShopIndex = 0;
+            _gameState = GameState.ShopMenu;
+        }
+        else if (index == 3) // Equipment Shop
+        {
+            if (_saveData.ShopRolledIds == null || _saveData.ShopRolledIds.Count == 0 ||
+                _saveData.LastShopRefresh == DateTime.MinValue || (DateTime.Now - _saveData.LastShopRefresh) >= TimeSpan.FromMinutes(5))
             {
-                ResetGame();
-                _gameState = GameState.Playing;
+                RollEquipmentShop();
             }
-            else if (_selectedLobbyIndex == 1) // Select Stage
-            {
-                _selectedStageIndex = _currentStage - 1;
-                _gameState = GameState.StageSelect;
-            }
-            else if (_selectedLobbyIndex == 2) // Shop upgrades
-            {
-                _selectedShopIndex = 0;
-                _gameState = GameState.ShopMenu;
-            }
-            else if (_selectedLobbyIndex == 3) // Skin Shop
-            {
-                _selectedSkinIndex = 0;
-                _gameState = GameState.SkinShop;
-            }
-            else if (_selectedLobbyIndex == 4) // Settings
-            {
-                _settingsCategoryIndex = 0;
-                _settingsItemIndex = 0;
-                _gameState = GameState.Settings;
-            }
-            else if (_selectedLobbyIndex == 5) // Exit
-            {
-                Exit();
-            }
+            _selectedShopIndex = 0; // index of item selected in shop
+            _gameState = GameState.EquipmentShop;
+        }
+        else if (index == 4) // Dressing Room
+        {
+            _selectedShopIndex = 0; // selected slot index
+            _selectedSkinIndex = 0; // selected owned equipment index
+            _gameState = GameState.DressingRoom;
+        }
+        else if (index == 5) // Skin Shop
+        {
+            _selectedSkinIndex = 0;
+            _gameState = GameState.SkinShop;
+        }
+        else if (index == 6) // Settings
+        {
+            _settingsCategoryIndex = 0;
+            _settingsItemIndex = 0;
+            _gameState = GameState.Settings;
+        }
+        else if (index == 7) // Exit
+        {
+            Exit();
         }
     }
 
@@ -880,19 +969,19 @@ public class Game1 : Game
 
     private void UpdateShopMenu(KeyboardState keyboardState)
     {
-        int totalItems = 13;
+        int totalItems = 17;
         // Mouse selection and click
         var mousePos = GetUiMousePosition();
         if (mousePos.X != -1 && mousePos.Y != -1)
         {
-            // Left column (0-8)
+            // Left column (0-12)
             int col1X = 40;
             int colY = 105;
             int colW = 340;
-            for (int i = 0; i < 9; i++)
+            for (int i = 0; i < 13; i++)
             {
-                int itemY = colY + 45 + i * 36;
-                var rect = new Rectangle(col1X + 5, itemY - 2, colW - 10, 30);
+                int itemY = colY + 38 + i * 26;
+                var rect = new Rectangle(col1X + 5, itemY - 2, colW - 10, 24);
                 if (rect.Contains(mousePos))
                 {
                     _selectedShopIndex = i;
@@ -905,7 +994,7 @@ public class Game1 : Game
                 }
             }
 
-            // Right column (9-11 Consumables)
+            // Right column (13-15 Consumables)
             int col2X = 420;
             for (int i = 0; i < 3; i++)
             {
@@ -913,13 +1002,13 @@ public class Game1 : Game
                 var rect = new Rectangle(col2X + 5, itemY - 2, colW - 10, 48);
                 if (rect.Contains(mousePos))
                 {
-                    _selectedShopIndex = 9 + i;
+                    _selectedShopIndex = 13 + i;
                     var mouseState = Mouse.GetState();
                     if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
                     {
-                        switch (9 + i)
+                        switch (13 + i)
                         {
-                            case 9:
+                            case 13:
                                 if (_saveData.Gold >= 100 && _saveData.ReviveCount < 3)
                                 {
                                     _saveData.Gold -= 100;
@@ -927,7 +1016,7 @@ public class Game1 : Game
                                     _saveData.Save();
                                 }
                                 break;
-                            case 10:
+                            case 14:
                                 if (_saveData.Gold >= 30 && _saveData.StartingPotions < 5)
                                 {
                                     _saveData.Gold -= 30;
@@ -935,7 +1024,7 @@ public class Game1 : Game
                                     _saveData.Save();
                                 }
                                 break;
-                            case 11:
+                            case 15:
                                 if (_saveData.Gold >= 80 && !_saveData.GoldBoosterActive)
                                 {
                                     _saveData.Gold -= 80;
@@ -949,12 +1038,12 @@ public class Game1 : Game
                 }
             }
 
-            // Exit button (12)
+            // Exit button (16)
             int backY = colY + 310;
             var backRect = new Rectangle(col2X + 20, backY, colW - 40, 50);
             if (backRect.Contains(mousePos))
             {
-                _selectedShopIndex = 12;
+                _selectedShopIndex = 16;
                 var mouseState = Mouse.GetState();
                 if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
                 {
@@ -981,28 +1070,26 @@ public class Game1 : Game
             _selectedShopIndex = (_selectedShopIndex + 1) % totalItems;
         }
         
-        // Column switching: left column (0-8) and right column (9-12)
+        // Column switching: left column (0-12) and right column (13-16)
         if (left)
         {
-            if (_selectedShopIndex >= 9)
+            if (_selectedShopIndex >= 13)
             {
-                // Jump to left column
-                _selectedShopIndex = Math.Clamp(_selectedShopIndex - 9, 0, 8);
+                _selectedShopIndex = Math.Clamp(_selectedShopIndex - 13, 0, 12);
             }
         }
         if (right)
         {
-            if (_selectedShopIndex <= 8)
+            if (_selectedShopIndex <= 12)
             {
-                // Jump to right column
-                _selectedShopIndex = Math.Clamp(_selectedShopIndex + 9, 9, 12);
+                _selectedShopIndex = Math.Clamp(_selectedShopIndex + 13, 13, 16);
             }
         }
 
         if ((keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter)) ||
             (keyboardState.IsKeyDown(Keys.Space) && _previousKeyboardState.IsKeyUp(Keys.Space)))
         {
-            if (_selectedShopIndex <= 8)
+            if (_selectedShopIndex <= 12)
             {
                 BuyPermanentUpgrade(_selectedShopIndex);
             }
@@ -1010,7 +1097,7 @@ public class Game1 : Game
             {
                 switch (_selectedShopIndex)
                 {
-                    case 9: // Revive Potion (100 gold, max 3)
+                    case 13: // Revive Potion (100 gold, max 3)
                         if (_saveData.Gold >= 100 && _saveData.ReviveCount < 3)
                         {
                             _saveData.Gold -= 100;
@@ -1019,7 +1106,7 @@ public class Game1 : Game
                         }
                         break;
 
-                    case 10: // HP Potion (30 gold, max 5)
+                    case 14: // HP Potion (30 gold, max 5)
                         if (_saveData.Gold >= 30 && _saveData.StartingPotions < 5)
                         {
                             _saveData.Gold -= 30;
@@ -1028,7 +1115,7 @@ public class Game1 : Game
                         }
                         break;
 
-                    case 11: // Gold Booster (80 gold, single use)
+                    case 15: // Gold Booster (80 gold, single use)
                         if (_saveData.Gold >= 80 && !_saveData.GoldBoosterActive)
                         {
                             _saveData.Gold -= 80;
@@ -1037,7 +1124,7 @@ public class Game1 : Game
                         }
                         break;
 
-                    case 12: // Exit Shop
+                    case 16: // Exit Shop
                         _gameState = GameState.Lobby;
                         break;
                 }
@@ -1052,7 +1139,7 @@ public class Game1 : Game
         {
             case 0:
                 cost = GetUpgradeCost(_saveData.MaxHPUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.MaxHPUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.MaxHPUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.MaxHPUpgradeLevel++;
@@ -1061,7 +1148,7 @@ public class Game1 : Game
                 break;
             case 1:
                 cost = GetUpgradeCost(_saveData.DamageUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.DamageUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.DamageUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.DamageUpgradeLevel++;
@@ -1070,7 +1157,7 @@ public class Game1 : Game
                 break;
             case 2:
                 cost = GetUpgradeCost(_saveData.SpeedUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.SpeedUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.SpeedUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.SpeedUpgradeLevel++;
@@ -1079,7 +1166,7 @@ public class Game1 : Game
                 break;
             case 3:
                 cost = GetUpgradeCost(_saveData.ArmorUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.ArmorUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.ArmorUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.ArmorUpgradeLevel++;
@@ -1088,7 +1175,7 @@ public class Game1 : Game
                 break;
             case 4:
                 cost = GetUpgradeCost(_saveData.MagnetUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.MagnetUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.MagnetUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.MagnetUpgradeLevel++;
@@ -1097,7 +1184,7 @@ public class Game1 : Game
                 break;
             case 5:
                 cost = GetUpgradeCost(_saveData.CooldownUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.CooldownUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.CooldownUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.CooldownUpgradeLevel++;
@@ -1106,7 +1193,7 @@ public class Game1 : Game
                 break;
             case 6:
                 cost = GetUpgradeCost(_saveData.GrowthUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.GrowthUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.GrowthUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.GrowthUpgradeLevel++;
@@ -1115,7 +1202,7 @@ public class Game1 : Game
                 break;
             case 7:
                 cost = GetUpgradeCost(_saveData.GreedUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.GreedUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.GreedUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.GreedUpgradeLevel++;
@@ -1124,10 +1211,46 @@ public class Game1 : Game
                 break;
             case 8:
                 cost = GetUpgradeCost(_saveData.LuckUpgradeLevel);
-                if (cost > 0 && _saveData.Gold >= cost && _saveData.LuckUpgradeLevel < 10)
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.LuckUpgradeLevel < 50)
                 {
                     _saveData.Gold -= cost;
                     _saveData.LuckUpgradeLevel++;
+                    _saveData.Save();
+                }
+                break;
+            case 9:
+                cost = GetUpgradeCost(_saveData.RegenUpgradeLevel);
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.RegenUpgradeLevel < 50)
+                {
+                    _saveData.Gold -= cost;
+                    _saveData.RegenUpgradeLevel++;
+                    _saveData.Save();
+                }
+                break;
+            case 10:
+                cost = GetUpgradeCost(_saveData.AreaUpgradeLevel);
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.AreaUpgradeLevel < 50)
+                {
+                    _saveData.Gold -= cost;
+                    _saveData.AreaUpgradeLevel++;
+                    _saveData.Save();
+                }
+                break;
+            case 11:
+                cost = GetUpgradeCost(_saveData.DurationUpgradeLevel);
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.DurationUpgradeLevel < 50)
+                {
+                    _saveData.Gold -= cost;
+                    _saveData.DurationUpgradeLevel++;
+                    _saveData.Save();
+                }
+                break;
+            case 12:
+                cost = GetUpgradeCost(_saveData.ProjSpeedUpgradeLevel);
+                if (cost > 0 && _saveData.Gold >= cost && _saveData.ProjSpeedUpgradeLevel < 50)
+                {
+                    _saveData.Gold -= cost;
+                    _saveData.ProjSpeedUpgradeLevel++;
                     _saveData.Save();
                 }
                 break;
@@ -1136,8 +1259,8 @@ public class Game1 : Game
 
     private int GetUpgradeCost(int currentLevel)
     {
-        if (currentLevel >= 10) return 0;
-        return 20 + currentLevel * 30; // 20, 50, 80, 110, 140, 170, 200, 230, 260, 290 gold
+        if (currentLevel >= 50) return 0;
+        return 20 + currentLevel * 20; // scales from 20 to 1000 gold
     }
 
     private void UpdateGameplay(GameTime gameTime, float deltaTime)
@@ -1232,10 +1355,11 @@ public class Game1 : Game
             }
         }
 
-        // 2.5 Passive: Pummarola HP recovery (+0.5 HP/s per level)
-        if (_player.PummarolaLevel > 0)
+        // 2.5 HP recovery (Pummarola +0.5 HP/s per level + permanent Regen)
+        float totalRegen = (_player.PummarolaLevel * 0.5f) + _player.PermanentRegen;
+        if (totalRegen > 0f)
         {
-            _player.HP = MathHelper.Min(_player.HP + (_player.PummarolaLevel * 0.5f) * deltaTime, _player.MaxHP);
+            _player.HP = MathHelper.Min(_player.HP + totalRegen * deltaTime, _player.MaxHP);
         }
 
         // 2.6 Giant Boss Spawn check (Stage-dependent interval)
@@ -1365,7 +1489,7 @@ public class Game1 : Game
             {
                 foreach (var enemy in _enemies)
                 {
-                    if (Vector2.Distance(pool.Position, enemy.Position) <= pool.Radius)
+                    if (Vector2.Distance(pool.Position, enemy.Center) <= pool.Radius)
                     {
                         enemy.HP -= pool.Damage * _player.DamageMultiplier;
                     }
@@ -1595,6 +1719,7 @@ public class Game1 : Game
 
     private void GenerateUpgradeChoices()
     {
+        _selectedUpgradeIndex = 0;
         _upgradeChoices.Clear();
         List<UpgradeOption> allOptions = new List<UpgradeOption>();
 
@@ -1769,33 +1894,102 @@ public class Game1 : Game
 
     private void UpdateUpgrades(KeyboardState keyboardState)
     {
-        bool choice1 = keyboardState.IsKeyDown(Keys.D1) && _previousKeyboardState.IsKeyUp(Keys.D1);
-        bool choice2 = keyboardState.IsKeyDown(Keys.D2) && _previousKeyboardState.IsKeyUp(Keys.D2);
-        bool choice3 = keyboardState.IsKeyDown(Keys.D3) && _previousKeyboardState.IsKeyUp(Keys.D3);
-        bool choice4 = keyboardState.IsKeyDown(Keys.D4) && _previousKeyboardState.IsKeyUp(Keys.D4);
-        bool choice5 = keyboardState.IsKeyDown(Keys.D5) && _previousKeyboardState.IsKeyUp(Keys.D5);
-        bool choice6 = keyboardState.IsKeyDown(Keys.D6) && _previousKeyboardState.IsKeyUp(Keys.D6);
-        bool choice7 = keyboardState.IsKeyDown(Keys.D7) && _previousKeyboardState.IsKeyUp(Keys.D7);
-
-        UpgradeOption selected = null;
-        if (choice1 && _upgradeChoices.Count >= 1) selected = _upgradeChoices[0];
-        else if (choice2 && _upgradeChoices.Count >= 2) selected = _upgradeChoices[1];
-        else if (choice3 && _upgradeChoices.Count >= 3) selected = _upgradeChoices[2];
-        else if (choice4 && _upgradeChoices.Count >= 4) selected = _upgradeChoices[3];
-        else if (choice5 && _upgradeChoices.Count >= 5) selected = _upgradeChoices[4];
-        else if (choice6 && _upgradeChoices.Count >= 6) selected = _upgradeChoices[5];
-        else if (choice7 && _upgradeChoices.Count >= 7) selected = _upgradeChoices[6];
-
-        if (selected != null)
+        int count = _upgradeChoices.Count;
+        if (count == 0)
         {
-            if (selected.Code == "REROLL")
+            _gameState = GameState.Playing;
+            return;
+        }
+
+        // Keyboard Navigation (Up/Down/W/S)
+        bool up = (keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
+                  (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up));
+        bool down = (keyboardState.IsKeyDown(Keys.S) && _previousKeyboardState.IsKeyUp(Keys.S)) ||
+                    (keyboardState.IsKeyDown(Keys.Down) && _previousKeyboardState.IsKeyUp(Keys.Down));
+
+        if (up)
+        {
+            _selectedUpgradeIndex = (_selectedUpgradeIndex - 1 + count) % count;
+        }
+        if (down)
+        {
+            _selectedUpgradeIndex = (_selectedUpgradeIndex + 1) % count;
+        }
+
+        // Mouse Hover & Click Selection
+        var mousePos = GetUiMousePosition();
+        bool mouseClicked = Mouse.GetState().LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            bool twoCol = count > 4;
+            int cardW = twoCol ? 385 : 560;
+            int cardH = 75;
+            int startX_col1 = twoCol ? 10 : 120;
+            int startX_col2 = 405;
+            int startY = 85;
+            int gap = 8;
+
+            for (int i = 0; i < count; i++)
             {
-                // Re-generate choices (Reroll)
+                int col = twoCol ? i % 2 : 0;
+                int row = twoCol ? i / 2 : i;
+                int cardX = col == 0 ? startX_col1 : startX_col2;
+                int cardY = startY + row * (cardH + gap);
+
+                var cardRect = new Rectangle(cardX, cardY, cardW, cardH);
+                if (cardRect.Contains(mousePos))
+                {
+                    _selectedUpgradeIndex = i;
+                    if (mouseClicked)
+                    {
+                        var selected = _upgradeChoices[i];
+                        if (selected.Code == "REROLL")
+                        {
+                            GenerateUpgradeChoices();
+                        }
+                        else
+                        {
+                            ApplyUpgrade(selected.Code);
+                            _gameState = GameState.Playing;
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Keyboard Selection
+        bool chooseSelected = (keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter)) ||
+                              (keyboardState.IsKeyDown(Keys.Space) && _previousKeyboardState.IsKeyUp(Keys.Space));
+
+        UpgradeOption selectedOption = null;
+
+        if (chooseSelected)
+        {
+            selectedOption = _upgradeChoices[_selectedUpgradeIndex];
+        }
+        else
+        {
+            // Numeric keys fallback
+            if (keyboardState.IsKeyDown(Keys.D1) && _previousKeyboardState.IsKeyUp(Keys.D1) && count >= 1) selectedOption = _upgradeChoices[0];
+            else if (keyboardState.IsKeyDown(Keys.D2) && _previousKeyboardState.IsKeyUp(Keys.D2) && count >= 2) selectedOption = _upgradeChoices[1];
+            else if (keyboardState.IsKeyDown(Keys.D3) && _previousKeyboardState.IsKeyUp(Keys.D3) && count >= 3) selectedOption = _upgradeChoices[2];
+            else if (keyboardState.IsKeyDown(Keys.D4) && _previousKeyboardState.IsKeyUp(Keys.D4) && count >= 4) selectedOption = _upgradeChoices[3];
+            else if (keyboardState.IsKeyDown(Keys.D5) && _previousKeyboardState.IsKeyUp(Keys.D5) && count >= 5) selectedOption = _upgradeChoices[4];
+            else if (keyboardState.IsKeyDown(Keys.D6) && _previousKeyboardState.IsKeyUp(Keys.D6) && count >= 6) selectedOption = _upgradeChoices[5];
+            else if (keyboardState.IsKeyDown(Keys.D7) && _previousKeyboardState.IsKeyUp(Keys.D7) && count >= 7) selectedOption = _upgradeChoices[6];
+        }
+
+        if (selectedOption != null)
+        {
+            if (selectedOption.Code == "REROLL")
+            {
                 GenerateUpgradeChoices();
             }
             else
             {
-                ApplyUpgrade(selected.Code);
+                ApplyUpgrade(selectedOption.Code);
                 _gameState = GameState.Playing;
             }
         }
@@ -2255,88 +2449,138 @@ public class Game1 : Game
 
         _tooltipEntries.Clear();
 
-        // 1. Render all game states to the virtual 800x600 RenderTarget
+        // 1. Render all game states to the virtual RenderTarget
         GraphicsDevice.SetRenderTarget(_mainRenderTarget);
         GraphicsDevice.Clear(new Color(15, 15, 15));
 
-        int screenWidth = 800;
-        int screenHeight = 600;
+        int[][] res = { 
+            new[]{800,600},
+            new[]{1024,768},
+            new[]{1280,720},
+            new[]{1600,900},
+            new[]{1920,1080}
+        };
+        _settingsResolutionIndex = Math.Clamp(_settingsResolutionIndex, 0, res.Length - 1);
+        int targetW = res[_settingsResolutionIndex][0];
+        int targetH = res[_settingsResolutionIndex][1];
 
-        float cameraX = MathHelper.Clamp(_player.Center.X, screenWidth / 2f, MapWidth - screenWidth / 2f);
-        float cameraY = MathHelper.Clamp(_player.Center.Y, screenHeight / 2f, MapHeight - screenHeight / 2f);
+        float scale = (float)targetH / 600f;
+        float virtualW = 600f * ((float)targetW / (float)targetH);
+        float offsetX = (virtualW - 800f) / 2f;
+
+        Matrix scaleMatrix = Matrix.CreateScale(scale, scale, 1f);
+        Matrix uiMatrix = Matrix.CreateTranslation(offsetX, 0, 0) * scaleMatrix;
+
+        float cameraX = MathHelper.Clamp(_player.Center.X, virtualW / 2f, MapWidth - virtualW / 2f);
+        float cameraY = MathHelper.Clamp(_player.Center.Y, 600f / 2f, MapHeight - 600f / 2f);
         
         Matrix cameraMatrix = Matrix.CreateTranslation(-cameraX, -cameraY, 0) *
-                              Matrix.CreateTranslation(screenWidth / 2f, screenHeight / 2f, 0);
+                              Matrix.CreateTranslation(virtualW / 2f, 600f / 2f, 0);
 
         switch (_gameState)
         {
+            case GameState.LoginRegister:
+                GraphicsDevice.Clear(new Color(12, 18, 35));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
+                DrawLoginRegister(gameTime);
+                _spriteBatch.End();
+                break;
+
             case GameState.Lobby:
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                GraphicsDevice.Clear(new Color(15, 23, 42));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawLobby(gameTime);
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
 
             case GameState.StageSelect:
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                GraphicsDevice.Clear(new Color(12, 18, 35));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawStageSelect();
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
 
             case GameState.ShopMenu:
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                GraphicsDevice.Clear(new Color(12, 18, 35));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawShopMenu();
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
 
+            case GameState.EquipmentShop:
+                GraphicsDevice.Clear(new Color(12, 18, 35));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
+                DrawEquipmentShop();
+                DrawTooltips();
+                _spriteBatch.End();
+                break;
+
+            case GameState.DressingRoom:
+                GraphicsDevice.Clear(new Color(12, 18, 35));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
+                DrawDressingRoom();
+                DrawTooltips();
+                _spriteBatch.End();
+                break;
+
             case GameState.SkinShop:
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                GraphicsDevice.Clear(new Color(12, 18, 35));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawSkinShop(gameTime);
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
 
             case GameState.Settings:
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                GraphicsDevice.Clear(new Color(12, 18, 35));
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawSettings(gameTime);
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
 
             case GameState.Playing:
-                _spriteBatch.Begin(transformMatrix: cameraMatrix, samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: cameraMatrix * scaleMatrix, samplerState: SamplerState.PointClamp);
                 DrawWorld(gameTime);
                 _spriteBatch.End();
 
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                if (_currentStage == 5 || (_currentStage == 8 && _stageMechanics.SandstormActive))
+                {
+                    _spriteBatch.Begin(transformMatrix: scaleMatrix, samplerState: SamplerState.PointClamp);
+                    if (_currentStage == 5)
+                        _stageMechanics.DrawFog(_spriteBatch, _pixelTexture, new Vector2(400 + offsetX, 300), (int)virtualW, 600);
+                    if (_currentStage == 8)
+                        _stageMechanics.DrawSandstorm(_spriteBatch, _pixelTexture, (int)virtualW, 600);
+                    _spriteBatch.End();
+                }
+
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawHUD(gameTime);
                 DrawMiniMap(gameTime);
-                if (_currentStage == 5)
-                    _stageMechanics.DrawFog(_spriteBatch, _pixelTexture, new Vector2(400, 300), screenWidth, screenHeight);
-                _stageMechanics.DrawSandstorm(_spriteBatch, _pixelTexture, screenWidth, screenHeight);
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
 
             case GameState.Paused:
-                _spriteBatch.Begin(transformMatrix: cameraMatrix, samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: cameraMatrix * scaleMatrix, samplerState: SamplerState.PointClamp);
                 DrawWorld(gameTime);
                 _spriteBatch.End();
 
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawPausedScreen(gameTime);
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
 
             case GameState.LevelUpUpgrades:
-                _spriteBatch.Begin(transformMatrix: cameraMatrix, samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: cameraMatrix * scaleMatrix, samplerState: SamplerState.PointClamp);
                 DrawWorld(gameTime);
                 _spriteBatch.End();
 
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawHUD(gameTime);
                 DrawUpgradeMenu();
                 DrawTooltips();
@@ -2344,11 +2588,11 @@ public class Game1 : Game
                 break;
 
             case GameState.ChestOpen:
-                _spriteBatch.Begin(transformMatrix: cameraMatrix, samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: cameraMatrix * scaleMatrix, samplerState: SamplerState.PointClamp);
                 DrawWorld(gameTime);
                 _spriteBatch.End();
 
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawHUD(gameTime);
                 if (_isChestChoiceActive)
                     DrawChestChoiceMenu();
@@ -2359,11 +2603,11 @@ public class Game1 : Game
                 break;
 
             case GameState.GameOver:
-                _spriteBatch.Begin(transformMatrix: cameraMatrix, samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: cameraMatrix * scaleMatrix, samplerState: SamplerState.PointClamp);
                 DrawWorld(gameTime);
                 _spriteBatch.End();
 
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawHUD(gameTime);
                 DrawGameOverScreen();
                 DrawTooltips();
@@ -2371,44 +2615,22 @@ public class Game1 : Game
                 break;
 
             case GameState.VictoryChoice:
-                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                _spriteBatch.Begin(transformMatrix: uiMatrix, samplerState: SamplerState.PointClamp);
                 DrawVictoryChoiceScreen();
                 DrawTooltips();
                 _spriteBatch.End();
                 break;
         }
 
-        // 2. Set render target back to physical screen and upscale centered
+        // 2. Set render target back to physical screen and draw 1:1
         GraphicsDevice.SetRenderTarget(null);
         GraphicsDevice.Clear(Color.Black);
 
         int physicalW = GraphicsDevice.Viewport.Width;
         int physicalH = GraphicsDevice.Viewport.Height;
-        float targetAspect = 800f / 600f;
-        float physicalAspect = (float)physicalW / physicalH;
-
-        int destW = physicalW;
-        int destH = physicalH;
-        int destX = 0;
-        int destY = 0;
-
-        if (physicalAspect > targetAspect)
-        {
-            destW = (int)(physicalH * targetAspect);
-            destH = physicalH;
-            destX = (physicalW - destW) / 2;
-        }
-        else if (physicalAspect < targetAspect)
-        {
-            destW = physicalW;
-            destH = (int)(physicalW / targetAspect);
-            destY = (physicalH - destH) / 2;
-        }
-
-        Rectangle destRect = new Rectangle(destX, destY, destW, destH);
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        _spriteBatch.Draw(_mainRenderTarget, destRect, Color.White);
+        _spriteBatch.Draw(_mainRenderTarget, new Rectangle(0, 0, physicalW, physicalH), Color.White);
         _spriteBatch.End();
 
         base.Draw(gameTime);
@@ -2465,7 +2687,7 @@ public class Game1 : Game
             switch (_settingsCategoryIndex)
             {
                 case 0:
-                    if (_settingsItemIndex == 0) { _settingsResolutionIndex = Math.Clamp(_settingsResolutionIndex + d, 0, 4); int[][] res = { new[]{800,600}, new[]{1024,768}, new[]{1280,720}, new[]{1600,900}, new[]{1920,1080} }; _graphics.PreferredBackBufferWidth = res[_settingsResolutionIndex][0]; _graphics.PreferredBackBufferHeight = res[_settingsResolutionIndex][1]; _graphics.ApplyChanges(); }
+                    if (_settingsItemIndex == 0) { _settingsResolutionIndex = Math.Clamp(_settingsResolutionIndex + d, 0, 4); ApplyResolutionChanges(); }
                     if (_settingsItemIndex == 1) { _settingsFullscreen = !_settingsFullscreen; _graphics.IsFullScreen = _settingsFullscreen; _graphics.ApplyChanges(); }
                     break;
                 case 1:
@@ -2503,7 +2725,7 @@ public class Game1 : Game
         _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, 800, 600), new Color(12, 18, 35));
         _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, 800, 65), new Color(20, 32, 55));
         _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 63, 800, 3), Color.CornflowerBlue);
-        string title = "CAI DAT (SETTINGS)";
+        string title = "CAI DAT";
         Vector2 titleSz = _scoreFont.MeasureString(title);
         _spriteBatch.DrawString(_scoreFont, title, new Vector2(400 - titleSz.X / 2, 18), Color.Gold);
         string navHint = "Q/Tab: Danh muc | W/S: Chon | A/D: Doi | ESC: Lai";
@@ -2559,22 +2781,22 @@ public class Game1 : Game
         {
             case 0:
                 DrawRow(0, "Do phan giai / Khung hinh",    resOpts[_settingsResolutionIndex],  "Thay doi ap dung ngay");
-                DrawRow(1, "Toan man hinh (Fullscreen)",    _settingsFullscreen ? "BAT" : "TAT","A/D de bat/tat");
+                DrawRow(1, "Toan man hinh",                 _settingsFullscreen ? "BAT" : "TAT","A/D de bat/tat");
                 break;
             case 1:
-                DrawRow(0, "Chat luong hieu ung (Particle)",qualOpts[_settingsEffectsQuality], "High = dep hon nhung giam FPS");
-                DrawRow(1, "VSync (dong bo man hinh)",       _settingsVsync ? "BAT" : "TAT",   "Giam xe hinh, tang input lag nhe");
+                DrawRow(0, "Chat luong hieu ung",           qualOpts[_settingsEffectsQuality],  "Cao = dep hon nhung giam FPS");
+                DrawRow(1, "Dong bo doc (VSync)",           _settingsVsync ? "BAT" : "TAT",     "Giam xe hinh, tang tre nhe");
                 DrawRow(2, "Gioi han FPS",                  fpsOpts[_settingsFpsCap],           "A/D chon muc FPS mong muon");
                 break;
             case 2:
-                DrawRow(0, "Am luong tong the (Master)", SettingsVolBar(_settingsMasterVolume), "A/D tang/giam (0-10)");
-                DrawRow(1, "Am luong nhac nen (Music)",  SettingsVolBar(_settingsMusicVolume),  "A/D tang/giam (0-10)");
-                DrawRow(2, "Am luong hieu ung (SFX)",    SettingsVolBar(_settingsSfxVolume),    "A/D tang/giam (0-10)");
+                DrawRow(0, "Am luong tong the",             SettingsVolBar(_settingsMasterVolume), "A/D tang/giam (0-10)");
+                DrawRow(1, "Am luong nhac nen",             SettingsVolBar(_settingsMusicVolume),  "A/D tang/giam (0-10)");
+                DrawRow(2, "Am luong hieu ung",             SettingsVolBar(_settingsSfxVolume),    "A/D tang/giam (0-10)");
                 break;
             case 3:
-                DrawRow(0, "Hien thi dong ho FPS",      _settingsShowFps     ? "BAT" : "TAT", "Goc tren phai trong tran");
-                DrawRow(1, "Hien thi Minimap",          _settingsShowMinimap ? "BAT" : "TAT", "Ban do thu nho goc phai");
-                DrawRow(2, "Ty le giao dien (UI Scale)",scaleOpts[_settingsUiScale],           "Anh huong co chu HUD");
+                DrawRow(0, "Hien thi dong ho FPS",          _settingsShowFps     ? "BAT" : "TAT", "Goc tren phai trong tran");
+                DrawRow(1, "Hien thi ban do thu nho",       _settingsShowMinimap ? "BAT" : "TAT", "Ban do thu nho goc phai");
+                DrawRow(2, "Ty le giao dien",               scaleOpts[_settingsUiScale],           "Anh huong co chu giao dien");
                 break;
             case 4:
                 DrawRow(0, "Do kho mac dinh",  diffOpts[_settingsDifficulty],   "Ap dung khi vao tran moi");
@@ -2625,6 +2847,35 @@ public class Game1 : Game
         if (down)
         {
             _selectedChestChoiceIndex = (_selectedChestChoiceIndex + 1) % count;
+        }
+
+        // Mouse hover and click support for chest choices
+        var mousePos = GetUiMousePosition();
+        bool mouseClicked = Mouse.GetState().LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            int cardW = 560;
+            int cardH = 70;
+            int startY = 150;
+            int gap = 10;
+
+            for (int i = 0; i < count; i++)
+            {
+                var cardRect = new Rectangle(120, startY + i * (cardH + gap), cardW, cardH);
+                if (cardRect.Contains(mousePos))
+                {
+                    _selectedChestChoiceIndex = i;
+                    if (mouseClicked)
+                    {
+                        var sel = _chestChoices[i];
+                        _isChestChoiceActive = false;
+                        _gameState = GameState.Playing;
+                        ApplyChestChoice(sel.Code);
+                        return;
+                    }
+                }
+            }
         }
 
         if ((keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter)) ||
@@ -2733,7 +2984,7 @@ public class Game1 : Game
         Vector2 titleSize = _scoreFont.MeasureString(title);
         _spriteBatch.DrawString(_scoreFont, title, new Vector2(400 - titleSize.X / 2, 70), Color.Gold);
 
-        string subTitle = "Dung phim W/S hoac Mui Ten de chon. Nhan ENTER/SPACE de nhan.";
+        string subTitle = "Su dung chuot hoac phim di chuyen va Enter/Space de chon.";
         Vector2 subSize = _scoreFont.MeasureString(subTitle);
         _spriteBatch.DrawString(_scoreFont, subTitle, new Vector2(400 - subSize.X / 2, 110), Color.Gray);
 
@@ -2867,50 +3118,79 @@ public class Game1 : Game
 
         // 2. Draw Permanent Stats & Gold Panel (top-left glass frame)
         int px = 50;
-        int py = 130;
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(px, py, 330, 95), new Color(30, 41, 59, 150));
+        int py = 120;
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(px, py, 330, 110), new Color(30, 41, 59, 150));
         _spriteBatch.Draw(_pixelTexture, new Rectangle(px, py, 330, 2), Color.Gold * 0.4f);
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(px, py + 93, 330, 2), Color.Gold * 0.4f);
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(px, py, 2, 95), Color.Gold * 0.4f);
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(px + 328, py, 2, 95), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(px, py + 108, 330, 2), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(px, py, 2, 110), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(px + 328, py, 2, 110), Color.Gold * 0.4f);
 
-        _spriteBatch.DrawString(_scoreFont, $"VANG TICH LUY: {_saveData.Gold} Vang", new Vector2(px + 15, py + 10), Color.Gold);
-        string statsSummary = $"HP Lvl {_saveData.MaxHPUpgradeLevel}/10 | Dmg {_saveData.DamageUpgradeLevel}/10 | Spd {_saveData.SpeedUpgradeLevel}/10";
-        DrawTruncatedString(statsSummary, new Vector2(px + 15, py + 38), 300f, Color.LightGray);
-        
-        int bestMin = (int)_saveData.BestSurvivalTime / 60;
-        int bestSec = (int)_saveData.BestSurvivalTime % 60;
-        string bestTime = $"KY LUC SINH TON: {bestMin:00}:{bestSec:00}";
-        _spriteBatch.DrawString(_scoreFont, bestTime, new Vector2(px + 15, py + 66), Color.GreenYellow);
-        RegisterTooltip(new Rectangle(px, py, 330, 95), "Thong Ke Vinh Vien",
-            $"Vang: {_saveData.Gold} | HP Lvl {_saveData.MaxHPUpgradeLevel}/10 | Dmg {_saveData.DamageUpgradeLevel}/10 | Spd {_saveData.SpeedUpgradeLevel}/10\nKy luc sinh ton: {bestMin:00}:{bestSec:00}");
+        // Calculate permanent upgraded stats (MaxHP, Damage, Speed) + Equipment boosts
+        float eqMaxHP = 0f;
+        float eqDamage = 0f;
+        float eqSpeed = 0f;
+        if (_saveData.EquippedIds != null)
+        {
+            foreach (var kvp in _saveData.EquippedIds)
+            {
+                if (!string.IsNullOrEmpty(kvp.Value))
+                {
+                    var eq = EquipmentDatabase.GetById(kvp.Value);
+                    if (eq != null)
+                    {
+                        switch (eq.StatType)
+                        {
+                            case "MaxHP": eqMaxHP += eq.StatValue; break;
+                            case "Damage": eqDamage += eq.StatValue; break;
+                            case "Speed": eqSpeed += eq.StatValue; break;
+                        }
+                    }
+                }
+            }
+        }
+        float lobbyMaxHP = 100f * (1f + _saveData.MaxHPUpgradeLevel * 0.05f) + eqMaxHP;
+        float lobbyDamage = 1.0f + _saveData.DamageUpgradeLevel * 0.05f + eqDamage;
+        float lobbySpeed = 190f * (1f + _saveData.SpeedUpgradeLevel * 0.015f + eqSpeed);
+
+        _spriteBatch.DrawString(_scoreFont, $"VANG TICH LUY: {_saveData.Gold} Vang", new Vector2(px + 15, py + 8), Color.Gold);
+        _spriteBatch.DrawString(_scoreFont, $"MAU (HP): {lobbyMaxHP} (Lvl {_saveData.MaxHPUpgradeLevel})", new Vector2(px + 15, py + 33), Color.OrangeRed);
+        _spriteBatch.DrawString(_scoreFont, $"SAT THUONG: {(lobbyDamage * 100):0}% (Lvl {_saveData.DamageUpgradeLevel})", new Vector2(px + 15, py + 58), Color.IndianRed);
+        _spriteBatch.DrawString(_scoreFont, $"TOC DO: {lobbySpeed:0} (Lvl {_saveData.SpeedUpgradeLevel})", new Vector2(px + 15, py + 83), Color.LightSkyBlue);
+
+        RegisterTooltip(new Rectangle(px, py, 330, 110), "Thong Ke Vinh Vien",
+            $"Vang: {_saveData.Gold} | HP: {lobbyMaxHP} (Lvl {_saveData.MaxHPUpgradeLevel}) | Dmg: {lobbyDamage * 100:0}% (Lvl {_saveData.DamageUpgradeLevel}) | Spd: {lobbySpeed:0} (Lvl {_saveData.SpeedUpgradeLevel})");
 
         // 3. Draw Selected Map Panel (top-right glass frame)
         int rx = 420;
-        int ry = 130;
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx, ry, 330, 95), new Color(30, 41, 59, 150));
+        int ry = 120;
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx, ry, 330, 110), new Color(30, 41, 59, 150));
         _spriteBatch.Draw(_pixelTexture, new Rectangle(rx, ry, 330, 2), Color.Gold * 0.4f);
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx, ry + 93, 330, 2), Color.Gold * 0.4f);
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx, ry, 2, 95), Color.Gold * 0.4f);
-        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx + 328, ry, 2, 95), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx, ry + 108, 330, 2), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx, ry, 2, 110), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(rx + 328, ry, 2, 110), Color.Gold * 0.4f);
 
-        string currentStageName = TruncateText(GetCurrentStageConfig().LobbyName, 300f);
-        _spriteBatch.DrawString(_scoreFont, "BAN DO HIEN TAI:", new Vector2(rx + 15, ry + 10), Color.Khaki);
-        _spriteBatch.DrawString(_scoreFont, currentStageName, new Vector2(rx + 15, ry + 38), Color.LimeGreen);
+        var stageRecord = _saveData.GetStageRecord(_currentStage);
+        int bestMin = (int)stageRecord.BestSurvivalTime / 60;
+        int bestSec = (int)stageRecord.BestSurvivalTime % 60;
 
-        // Display pre-purchased consumables if any!
-        string consText = $"Hoi Sinh: {_saveData.ReviveCount}/3 | Binh Mau: {_saveData.StartingPotions}/5" + (_saveData.GoldBoosterActive ? " | Bua Vang" : "");
-        DrawTruncatedString(consText, new Vector2(rx + 15, ry + 66), 300f, Color.LightSkyBlue);
-        RegisterTooltip(new Rectangle(rx, ry, 330, 95), "Ban Do Hien Tai", GetStageTooltipBody(GetCurrentStageConfig()));
+        string currentStageName = GetCurrentStageConfig().LobbyName;
+        DrawTruncatedString("BAN DO: " + currentStageName, new Vector2(rx + 15, ry + 8), 300f, Color.LimeGreen);
+        _spriteBatch.DrawString(_scoreFont, $"KY LUC THOI GIAN: {bestMin:00}:{bestSec:00}", new Vector2(rx + 15, ry + 33), Color.GreenYellow);
+        _spriteBatch.DrawString(_scoreFont, $"KY LUC VANG: {stageRecord.BestGold} Vang", new Vector2(rx + 15, ry + 58), Color.Gold);
+        _spriteBatch.DrawString(_scoreFont, $"KY LUC TIEU DIET: {stageRecord.BestKills}", new Vector2(rx + 15, ry + 83), Color.LightSkyBlue);
+
+        RegisterTooltip(new Rectangle(rx, ry, 330, 110), "Ban Do Hien Tai", GetStageTooltipBody(GetCurrentStageConfig()));
 
         // 4. Draw Lobby Options (on the left side)
         string[] options = { 
             "1. BAT DAU CHOI (START RUN)", 
             "2. CHON MAN CHOI (SELECT STAGE)", 
             "3. SHOP NANG CAP CHI SO", 
-            "4. SHOP NGOAI HINH (SKINS)",
-            "5. CAI DAT (SETTINGS)",
-            "6. THOAT GAME (EXIT)" 
+            "4. SHOP TRANG BI HIEN TAI",
+            "5. PHONG THAY DO (WARDROBE)",
+            "6. SHOP NGOAI HINH (SKINS)",
+            "7. CAI DAT (SETTINGS)",
+            "8. THOAT GAME (EXIT)" 
         };
         for (int i = 0; i < options.Length; i++)
         {
@@ -2918,8 +3198,8 @@ public class Game1 : Game
             string prefix = i == _selectedLobbyIndex ? "> " : "  ";
             string text = prefix + options[i];
             
-            _spriteBatch.DrawString(_scoreFont, text, new Vector2(70, 240 + i * 46), color);
-            RegisterTooltip(new Rectangle(65, 235 + i * 46, 360, 40), options[i], GetLobbyOptionTooltip(i));
+            _spriteBatch.DrawString(_scoreFont, text, new Vector2(70, 245 + i * 33), color);
+            RegisterTooltip(new Rectangle(65, 240 + i * 33, 360, 28), options[i], GetLobbyOptionTooltip(i));
         }
 
         // 5. Draw Skin Preview Box (on the right side)
@@ -3080,7 +3360,7 @@ public class Game1 : Game
         _spriteBatch.Draw(_pixelTexture, new Rectangle(col1X, colY, colW, 385), new Color(25, 30, 45, 180));
         _spriteBatch.Draw(_pixelTexture, new Rectangle(col1X, colY, colW, 2), Color.Gold * 0.4f);
         _spriteBatch.Draw(_pixelTexture, new Rectangle(col1X, colY + 383, colW, 2), Color.Gold * 0.4f);
-        _spriteBatch.DrawString(_scoreFont, "NANG CAP VINH VIEN (L1-10)", new Vector2(col1X + 15, colY + 12), Color.Gold);
+        _spriteBatch.DrawString(_scoreFont, "NANG CAP VINH VIEN (L1-50)", new Vector2(col1X + 15, colY + 10), Color.Gold);
 
         string[] permNames = {
             "Max HP",
@@ -3091,7 +3371,11 @@ public class Game1 : Game
             "Hoi Chieu",
             "Tang Truong",
             "Greed (Vang)",
-            "Luck (May Man)"
+            "Luck (May Man)",
+            "Hoi Mau (Regen)",
+            "Kich Thuoc (Area)",
+            "Thoi Gian (Dur)",
+            "Toc Do Dan"
         };
 
         int[] permLvls = {
@@ -3103,27 +3387,31 @@ public class Game1 : Game
             _saveData.CooldownUpgradeLevel,
             _saveData.GrowthUpgradeLevel,
             _saveData.GreedUpgradeLevel,
-            _saveData.LuckUpgradeLevel
+            _saveData.LuckUpgradeLevel,
+            _saveData.RegenUpgradeLevel,
+            _saveData.AreaUpgradeLevel,
+            _saveData.DurationUpgradeLevel,
+            _saveData.ProjSpeedUpgradeLevel
         };
 
-        for (int i = 0; i < 9; i++)
+        for (int i = 0; i < 13; i++)
         {
             int idx = i;
             bool sel = idx == _selectedShopIndex;
-            int itemY = colY + 45 + i * 36;
+            int itemY = colY + 38 + i * 26;
 
-            if (sel) _spriteBatch.Draw(_pixelTexture, new Rectangle(col1X + 5, itemY - 2, colW - 10, 30), new Color(45, 65, 100));
+            if (sel) _spriteBatch.Draw(_pixelTexture, new Rectangle(col1X + 5, itemY - 2, colW - 10, 24), new Color(45, 65, 100));
 
             Color color = sel ? Color.Yellow : Color.White;
             string pfx = sel ? "> " : "  ";
             string text = pfx + permNames[i];
             DrawTruncatedString(text, new Vector2(col1X + 10, itemY + 2), colW - 110f, color);
 
-            string status = permLvls[i] >= 10 ? "MAX" : $"{permLvls[i]}/10 [{GetUpgradeCost(permLvls[i])}g]";
-            Color statusColor = permLvls[i] >= 10 ? Color.Orange : (sel ? Color.Yellow : Color.Cyan);
+            string status = permLvls[i] >= 50 ? "MAX" : $"{permLvls[i]}/50 [{GetUpgradeCost(permLvls[i])}g]";
+            Color statusColor = permLvls[i] >= 50 ? Color.Orange : (sel ? Color.Yellow : Color.Cyan);
             Vector2 sz = _scoreFont.MeasureString(status);
             _spriteBatch.DrawString(_scoreFont, status, new Vector2(col1X + colW - sz.X - 15, itemY + 2), statusColor);
-            RegisterTooltip(new Rectangle(col1X + 5, itemY - 2, colW - 10, 30), permNames[i], GetShopItemTooltip(idx));
+            RegisterTooltip(new Rectangle(col1X + 5, itemY - 2, colW - 10, 24), permNames[i], GetShopItemTooltip(idx));
         }
 
         // Column 2 Frame: Consumables & Exit (X=420, Y=105, W=340, H=385)
@@ -3133,15 +3421,15 @@ public class Game1 : Game
         _spriteBatch.Draw(_pixelTexture, new Rectangle(col2X, colY + 383, colW, 2), Color.Gold * 0.4f);
         _spriteBatch.DrawString(_scoreFont, "VAT PHAM HO TRO TRAN DAU", new Vector2(col2X + 15, colY + 12), Color.Gold);
 
-        // Consumables: index 9 to 11
-        string[] consNames = { "Hoi Sinh (Revive)", "Binh Mau (Potion)", "Bua Vang (Booster)" };
+        // Consumables: index 13 to 15
+        string[] consNames = { "Hoi Sinh", "Binh Mau", "Bua Vang" };
         int[] consCounts = { _saveData.ReviveCount, _saveData.StartingPotions, _saveData.GoldBoosterActive ? 1 : 0 };
         int[] consMax = { 3, 5, 1 };
         int[] consPrices = { 100, 30, 80 };
 
         for (int i = 0; i < 3; i++)
         {
-            int idx = 9 + i;
+            int idx = 13 + i;
             bool sel = idx == _selectedShopIndex;
             int itemY = colY + 48 + i * 55;
 
@@ -3162,8 +3450,8 @@ public class Game1 : Game
             RegisterTooltip(new Rectangle(col2X + 5, itemY - 2, colW - 10, 48), consNames[i], GetShopItemTooltip(idx));
         }
 
-        // Back button (index 12) at the bottom right
-        bool backSel = _selectedShopIndex == 12;
+        // Back button (index 16) at the bottom right
+        bool backSel = _selectedShopIndex == 16;
         int backY = colY + 310;
         if (backSel) _spriteBatch.Draw(_pixelTexture, new Rectangle(col2X + 20, backY, colW - 40, 50), new Color(80, 40, 40));
         else _spriteBatch.Draw(_pixelTexture, new Rectangle(col2X + 20, backY, colW - 40, 50), new Color(40, 20, 20));
@@ -3174,7 +3462,7 @@ public class Game1 : Game
         string backText = "QUAY LAI SANH CHO (BACK)";
         Vector2 backSz = _scoreFont.MeasureString(backText);
         _spriteBatch.DrawString(_scoreFont, backText, new Vector2(col2X + colW / 2 - backSz.X / 2, backY + 14), backSel ? Color.Yellow : Color.White);
-        RegisterTooltip(new Rectangle(col2X + 20, backY, colW - 40, 50), "Quay Lai Sanh Cho", GetShopItemTooltip(12));
+        RegisterTooltip(new Rectangle(col2X + 20, backY, colW - 40, 50), "Quay Lai Sanh Cho", GetShopItemTooltip(16));
 
         // Description / Detail Panel at the bottom (X=40, Y=505, W=720, H=50)
         _spriteBatch.Draw(_pixelTexture, new Rectangle(40, 505, 720, 50), new Color(20, 25, 38, 220));
@@ -3184,19 +3472,23 @@ public class Game1 : Game
         string itemDesc = "";
         switch (_selectedShopIndex)
         {
-            case 0: itemDesc = "Max HP: Tang +10% mau toi da vinh vien cho nhan vat."; break;
-            case 1: itemDesc = "Sat Thuong: Tang +10% sat thuong gay ra cho quai vinh vien."; break;
-            case 2: itemDesc = "Toc Do: Tang +5% toc do di chuyen trong tran vinh vien."; break;
-            case 3: itemDesc = "Giap: Giam -1 sat thuong vat ly nhan vao tren moi cap vinh vien."; break;
-            case 4: itemDesc = "Nam Cham: Tang +15% ban kinh hut ngoc va vang vinh vien."; break;
-            case 5: itemDesc = "Hoi Chieu: Giam -4% thoi gian cho giua moi lan ra chieu vinh vien."; break;
-            case 6: itemDesc = "Tang Truong: Tang +8% diem kinh nghiem (EXP) thu thap duoc vinh vien."; break;
-            case 7: itemDesc = "Greed: Tang +10% luong vang thu thap duoc trong tran vinh vien."; break;
-            case 8: itemDesc = "Luck: Tang +10% may man mo o qua thu 5 va xao bai vinh vien."; break;
-            case 9: itemDesc = "Hoi Sinh: Tu dong hoi sinh 50% HP khi het mau trong tran (Max 3)."; break;
-            case 10: itemDesc = "Binh Mau: Mang theo binh tiep te giup hoi +30 HP khi bam H (Max 5)."; break;
-            case 11: itemDesc = "Bua Vang: Nhan doi toan bo luong vang nhan duoc trong tran dau ke."; break;
-            case 12: itemDesc = "Thoat cua hang va quay tro lai sanh cho chinh."; break;
+            case 0: itemDesc = "Max HP: Tang +5% mau toi da vinh vien cho nhan vat tren moi cap."; break;
+            case 1: itemDesc = "Sat Thuong: Tang +5% sat thuong gay ra cho quai vinh vien tren moi cap."; break;
+            case 2: itemDesc = "Toc Do: Tang +1.5% toc do di chuyen trong tran vinh vien tren moi cap."; break;
+            case 3: itemDesc = "Giap: Giam -0.5 sat thuong vat ly nhan vao tren moi cap vinh vien."; break;
+            case 4: itemDesc = "Nam Cham: Tang +5% ban kinh hut ngoc va vang vinh vien tren moi cap."; break;
+            case 5: itemDesc = "Hoi Chieu: Giam -1% thoi gian cho giua moi lan ra chieu vinh vien tren moi cap."; break;
+            case 6: itemDesc = "Tang Truong: Tang +4% diem kinh nghiem (EXP) thu thap duoc vinh vien tren moi cap."; break;
+            case 7: itemDesc = "Greed: Tang +5% luong vang thu thap duoc trong tran vinh vien tren moi cap."; break;
+            case 8: itemDesc = "Luck: Tang +4% may man mo o qua thu 5 va xao bai vinh vien tren moi cap."; break;
+            case 9: itemDesc = "Hoi Mau (Regen): Tang +0.08 HP hoi phục moi giay trong tran tren moi cap."; break;
+            case 10: itemDesc = "Kich Thuoc (Area): Tang +2% kich thuoc, ban kinh don danh vinh vien tren moi cap."; break;
+            case 11: itemDesc = "Thoi Gian (Duration): Tang +2% thoi gian hieu luc cua chieu thuc vinh vien tren moi cap."; break;
+            case 12: itemDesc = "Toc Do Dan: Tang +2% toc do bay cua cac loai dan/riu vinh vien tren moi cap."; break;
+            case 13: itemDesc = "Hoi Sinh: Tu dong hoi sinh 50% HP khi het mau trong tran (Max 3)."; break;
+            case 14: itemDesc = "Binh Mau: Mang theo binh tiep te giup hoi +30 HP khi bam H (Max 5)."; break;
+            case 15: itemDesc = "Bua Vang: Nhan doi toan bo luong vang nhan duoc trong tran dau ke."; break;
+            case 16: itemDesc = "Thoat cua hang va quay tro lai sanh cho chinh."; break;
         }
 
         string wrappedItemDesc = WrapText(itemDesc, 680f);
@@ -3968,7 +4260,7 @@ public class Game1 : Game
         }
 
         // 4. Draw Score / Kill Count / Gold Collected (below minimap)
-        string killText = $"Kills: {_killCount} | Vang: {_goldCollectedThisRun}";
+        string killText = $"Tieu diet: {_killCount} | Vang: {_goldCollectedThisRun}";
         DrawTruncatedString(killText, new Vector2(630, 180), 155f, Color.Gold);
 
         // 5. Draw Active Weapons Slots (bottom left)
@@ -4312,33 +4604,13 @@ public class Game1 : Game
         var mouse = Mouse.GetState();
         int physicalW = GraphicsDevice.Viewport.Width;
         int physicalH = GraphicsDevice.Viewport.Height;
-        float targetAspect = 800f / 600f;
-        float physicalAspect = (float)physicalW / physicalH;
 
-        int destW = physicalW;
-        int destH = physicalH;
-        int destX = 0;
-        int destY = 0;
-
-        if (physicalAspect > targetAspect)
-        {
-            destW = (int)(physicalH * targetAspect);
-            destH = physicalH;
-            destX = (physicalW - destW) / 2;
-        }
-        else if (physicalAspect < targetAspect)
-        {
-            destW = physicalW;
-            destH = (int)(physicalW / targetAspect);
-            destY = (physicalH - destH) / 2;
-        }
-
-        if (mouse.X < destX || mouse.X >= destX + destW || mouse.Y < destY || mouse.Y >= destY + destH)
+        if (mouse.X < 0 || mouse.X >= physicalW || mouse.Y < 0 || mouse.Y >= physicalH)
             return new Point(-1, -1);
 
-        float scaleX = 800f / destW;
-        float scaleY = 600f / destH;
-        return new Point((int)((mouse.X - destX) * scaleX), (int)((mouse.Y - destY) * scaleY));
+        float scaleX = 800f / (float)physicalW;
+        float scaleY = 600f / (float)physicalH;
+        return new Point((int)(mouse.X * scaleX), (int)(mouse.Y * scaleY));
     }
 
     private void DrawTooltips()
@@ -4426,31 +4698,31 @@ public class Game1 : Game
 
         string title = lookup switch
         {
-            "WAND" => "Magic Wand",
-            "GARLIC" => "Garlic Aura",
-            "FIREBALL" => "Fireball",
-            "AXE" => "Axe",
-            "LIGHTNING" => "Lightning Ring",
-            "HOLYWATER" => "Holy Water",
-            "CROSS" => "Cross",
-            "BIBLE" => "King Bible",
-            "KNIFE" => "Knife",
-            "BOOTS" => "Speed Boots",
-            "REGEN" => "Regen Ring",
-            "SHIELD" => "Armor Shield",
-            "SPINACH" => "Spinach",
-            "MAGNET" => "Attractorb",
-            "DUPLICATOR" => "Duplicator",
-            "CLOVER" => "Clover",
-            "HEART" => "Hollow Heart",
-            "PUMMAROLA" => "Pummarola",
-            "BRACER" => "Bracer",
-            "SPELLBINDER" => "Spellbinder",
-            "TOME" => "Empty Tome",
-            "HEAL" => "Hoi Mau",
-            "REROLL" => "Xao Bai",
-            "GOLD" => "Vang",
-            "EXP" => "Kinh Nghiem",
+            "WAND" => "Trượng Phép",
+            "GARLIC" => "Vòng Tỏi",
+            "FIREBALL" => "Cầu Lửa",
+            "AXE" => "Rìu Chiến",
+            "LIGHTNING" => "Nhẫn Sấm Sét",
+            "HOLYWATER" => "Nước Thánh",
+            "CROSS" => "Thánh Giá",
+            "BIBLE" => "Kinh Thánh",
+            "KNIFE" => "Dao Phi",
+            "BOOTS" => "Giày Tốc Độ",
+            "REGEN" => "Nhẫn Hồi Phục",
+            "SHIELD" => "Khiên Giáp",
+            "SPINACH" => "Rau Chân Vịt",
+            "MAGNET" => "Nam Châm",
+            "DUPLICATOR" => "Nhân Bản",
+            "CLOVER" => "Cỏ Bốn Lá",
+            "HEART" => "Trái Tim Rỗng",
+            "PUMMAROLA" => "Sốt Cà Chua",
+            "BRACER" => "Vòng Giáp Tay",
+            "SPELLBINDER" => "Bùa Ma Thuật",
+            "TOME" => "Sách Cổ Rỗng",
+            "HEAL" => "Hồi Máu",
+            "REROLL" => "Xáo Bài",
+            "GOLD" => "Vàng",
+            "EXP" => "Kinh Nghiệm",
             _ => lookup
         };
 
@@ -4504,19 +4776,23 @@ public class Game1 : Game
     {
         return index switch
         {
-            0 => "Max HP: Tang +10% mau toi da vinh vien cho nhan vat.",
-            1 => "Sat Thuong: Tang +10% sat thuong gay ra cho quai vinh vien.",
-            2 => "Toc Do: Tang +5% toc do di chuyen trong tran vinh vien.",
-            3 => "Giap: Giam -1 sat thuong vat ly nhan vao tren moi cap vinh vien.",
-            4 => "Nam Cham: Tang +15% ban kinh hut ngoc va vang vinh vien.",
-            5 => "Hoi Chieu: Giam -4% thoi gian cho giua moi lan ra chieu vinh vien.",
-            6 => "Tang Truong: Tang +8% diem kinh nghiem (EXP) thu thap duoc vinh vien.",
-            7 => "Greed: Tang +10% luong vang thu thap duoc trong tran vinh vien.",
-            8 => "Luck: Tang +10% may man mo o qua thu 5 va xao bai vinh vien.",
-            9 => "Hoi Sinh: Tu dong hoi sinh 50% HP khi het mau trong tran (Max 3).",
-            10 => "Binh Mau: Mang theo binh tiep te giup hoi +30 HP khi bam H (Max 5).",
-            11 => "Bua Vang: Nhan doi toan bo luong vang nhan duoc trong tran dau ke.",
-            12 => "Thoat cua hang va quay tro lai sanh cho chinh.",
+            0 => "Mau Toi Da: Tang +5% mau toi da vinh vien cho nhan vat tren moi cap (Max 50).",
+            1 => "Sat Thuong: Tang +5% sat thuong gay ra cho quai vinh vien tren moi cap (Max 50).",
+            2 => "Toc Do: Tang +1.5% toc do di chuyen trong tran vinh vien tren moi cap (Max 50).",
+            3 => "Giap: Giam -0.5 sat thuong vat ly nhan vao tren moi cap vinh vien (Max 50).",
+            4 => "Nam Cham: Tang +5% ban kinh hut ngoc va vang vinh vien tren moi cap (Max 50).",
+            5 => "Hoi Chieu: Giam -1% thoi gian cho giua moi lan ra chieu vinh vien tren moi cap (Max 50).",
+            6 => "Tang Truong (EXP): Tang +4% diem kinh nghiem (EXP) thu thap duoc vinh vien tren moi cap (Max 50).",
+            7 => "Tham Lam (Vang): Tang +5% luong vang thu thap duoc trong tran vinh vien tren moi cap (Max 50).",
+            8 => "May Man: Tang +4% may man mo o qua thu 5 va xao bai vinh vien tren moi cap (Max 50).",
+            9 => "Hoi Mau (Regen): Tang +0.08 HP hoi phuc moi giay vinh vien tren moi cap (Max 50).",
+            10 => "Kich Thuoc (Area): Tang +2% kich thuoc, ban kinh don danh vinh vien tren moi cap (Max 50).",
+            11 => "Thoi Gian (Duration): Tang +2% thoi gian hieu luc cua chieu thuc vinh vien tren moi cap (Max 50).",
+            12 => "Toc Do Dan: Tang +2% toc do bay cua cac loai dan/riu vinh vien tren moi cap (Max 50).",
+            13 => "Hoi Sinh: Tu dong hoi sinh 50% HP khi het mau trong tran (Max 3).",
+            14 => "Binh Mau: Mang theo binh tiep te giup hoi +30 HP khi bam H (Max 5).",
+            15 => "Bua Vang: Nhan doi toan bo luong vang nhan duoc trong tran dau ke.",
+            16 => "Thoat cua hang va quay tro lai sanh cho chinh.",
             _ => string.Empty
         };
     }
@@ -4528,9 +4804,11 @@ public class Game1 : Game
             0 => "Bat dau tran dau tai man hien tai voi trang bi va vat pham da mua.",
             1 => "Chon 1 trong 10 man choi, do kho va co che dac biet tang dan.",
             2 => "Mua nang cap vinh vien: HP, sat thuong, toc do, giap, nam cham...",
-            3 => "Doi ngoai hinh nhan vat. Mot so skin can mua bang vang.",
-            4 => "Cai dat do hoa, am thanh, giao dien va do kho.",
-            5 => "Thoat game ve man hinh nen.",
+            3 => "Cua hang trang bi chien dau: Mua giay, giap, vu khi dung mot lan.",
+            4 => "Phong thay do: Xem tui do va mac trang bi chien dau cho nhan vat.",
+            5 => "Doi ngoai hinh nhan vat. Mot so skin can mua bang vang.",
+            6 => "Cai dat do hoa, am thanh, giao dien va do kho.",
+            7 => "Thoat game ve man hinh nen.",
             _ => string.Empty
         };
     }
@@ -4612,15 +4890,24 @@ public class Game1 : Game
             Color bgColor = choice.Code == "HEAL"    ? new Color(30, 50, 30) :
                             choice.Code == "REROLL"  ? new Color(50, 30, 50) :
                                                        new Color(25, 35, 55);
-            Color borderColor = choice.Code == "HEAL"   ? Color.LimeGreen * 0.7f :
-                                choice.Code == "REROLL" ? Color.Violet * 0.7f :
-                                                          Color.Gold * 0.5f;
+            bool isSelected = i == _selectedUpgradeIndex;
+            if (isSelected)
+            {
+                bgColor = choice.Code == "HEAL"    ? new Color(40, 70, 40) :
+                          choice.Code == "REROLL"  ? new Color(70, 40, 70) :
+                                                     new Color(40, 55, 85);
+            }
+            Color borderColor = isSelected ? Color.Yellow :
+                                (choice.Code == "HEAL"   ? Color.LimeGreen * 0.7f :
+                                 choice.Code == "REROLL" ? Color.Violet * 0.7f :
+                                                           Color.Gold * 0.5f);
+            int borderThick = isSelected ? 3 : 2;
 
             _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, cardW, cardH), bgColor);
-            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, cardW, 2), borderColor);
-            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY + cardH - 2, cardW, 2), borderColor);
-            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, 2, cardH), borderColor);
-            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX + cardW - 2, cardY, 2, cardH), borderColor);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, cardW, borderThick), borderColor);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY + cardH - borderThick, cardW, borderThick), borderColor);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, borderThick, cardH), borderColor);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX + cardW - borderThick, cardY, borderThick, cardH), borderColor);
 
             // Key badge
             string keyText = $"[{i + 1}]";
@@ -4646,8 +4933,7 @@ public class Game1 : Game
         }
 
         // Footer guide
-        string guide = count <= 3 ? "Nhan [1] [2] [3] de chon" :
-                       count <= 5 ? "Nhan [1]-[5] de chon" : "Nhan [1]-[7] de chon";
+        string guide = "Su dung chuot hoac phim di chuyen va Enter de chon";
         Vector2 guideSize = _scoreFont.MeasureString(guide);
         _spriteBatch.DrawString(_scoreFont, guide, new Vector2(400 - guideSize.X / 2, 575), Color.DimGray);
     }
@@ -4946,7 +5232,7 @@ public class Game1 : Game
         _spriteBatch.Draw(_pixelTexture, new Rectangle(50, 40, 700, 3), Color.Gold);
         _spriteBatch.Draw(_pixelTexture, new Rectangle(50, 102, 700, 3), Color.Gold);
 
-        string title = "★ TRẬN ĐẤU TẠM DỪNG - PAUSED ★";
+        string title = "★ TRẬN ĐẤU TẠM DỪNG ★";
         Vector2 titleSize = _scoreFont.MeasureString(title);
         _spriteBatch.DrawString(_scoreFont, title, new Vector2(400 - titleSize.X / 2, 58), Color.Gold);
 
@@ -5055,7 +5341,7 @@ public class Game1 : Game
         drawPausePassive("TOME", _player.EmptyTomeLevel);
 
         // Options
-        string[] options = { "CHƠI TIẾP (RESUME)", "THOÁT TRẬN VỀ SẢNH (EXIT STAGE)", "THOÁT GAME (EXIT GAME)" };
+        string[] options = { "CHƠI TIẾP", "THOÁT TRẬN VỀ SẢNH", "THOÁT GAME" };
         int oy = 405;
         for (int i = 0; i < options.Length; i++)
         {
@@ -5071,8 +5357,1152 @@ public class Game1 : Game
             RegisterTooltip(new Rectangle(200, oy + i * 45 - 4, 400, 40), options[i], pauseTip);
         }
 
-        string guide = "W/S: Di chuyển | ENTER/SPACE: Chọn | ESC: Resume";
+        string guide = "W/S: Di chuyển | ENTER/SPACE: Chọn | ESC: Chơi tiếp";
         Vector2 guideSize = _scoreFont.MeasureString(guide);
         _spriteBatch.DrawString(_scoreFont, guide, new Vector2(400 - guideSize.X / 2, 545), Color.Gray);
+    }
+
+    private void UpdateLoginRegister(KeyboardState keyboardState)
+    {
+        var mousePos = GetUiMousePosition();
+        var mouseState = Mouse.GetState();
+        bool mouseClicked = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+
+        int startY = 145;
+        int gap = 55;
+
+        Rectangle usernameRect = new Rectangle(250, startY, 300, 36);
+        Rectangle passwordRect = new Rectangle(250, startY + gap, 300, 36);
+        Rectangle confirmPasswordRect = new Rectangle(250, startY + gap * 2, 300, 36);
+
+        int submitY = _isRegisterMode ? startY + gap * 3 + 12 : startY + gap * 2 + 12;
+        Rectangle submitRect = new Rectangle(250, submitY, 300, 36);
+        Rectangle toggleRect = new Rectangle(250, submitY + 45, 300, 36);
+        Rectangle offlineRect = new Rectangle(250, submitY + 90, 300, 36);
+        Rectangle exitRect = new Rectangle(250, submitY + 135, 300, 36);
+
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            if (usernameRect.Contains(mousePos))
+            {
+                _selectedLoginOption = 0;
+                if (mouseClicked) _loginActiveField = 0;
+            }
+            else if (passwordRect.Contains(mousePos))
+            {
+                _selectedLoginOption = 1;
+                if (mouseClicked) _loginActiveField = 1;
+            }
+            else if (_isRegisterMode && confirmPasswordRect.Contains(mousePos))
+            {
+                _selectedLoginOption = 2;
+                if (mouseClicked) _loginActiveField = 2;
+            }
+            else if (submitRect.Contains(mousePos))
+            {
+                _selectedLoginOption = 3;
+                if (mouseClicked) SubmitLoginRegister();
+            }
+            else if (toggleRect.Contains(mousePos))
+            {
+                _selectedLoginOption = 4;
+                if (mouseClicked) ToggleLoginRegisterMode();
+            }
+            else if (offlineRect.Contains(mousePos))
+            {
+                _selectedLoginOption = 5;
+                if (mouseClicked) PlayOffline();
+            }
+            else if (exitRect.Contains(mousePos))
+            {
+                _selectedLoginOption = 6;
+                if (mouseClicked) Exit();
+            }
+        }
+
+        int maxOptions = _isRegisterMode ? 7 : 6;
+        if ((keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up)) ||
+            (keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)))
+        {
+            _selectedLoginOption = (_selectedLoginOption - 1 + maxOptions) % maxOptions;
+            if (_selectedLoginOption < 3)
+            {
+                _loginActiveField = _selectedLoginOption;
+            }
+        }
+        if ((keyboardState.IsKeyDown(Keys.Down) && _previousKeyboardState.IsKeyUp(Keys.Down)) ||
+            (keyboardState.IsKeyDown(Keys.S) && _previousKeyboardState.IsKeyUp(Keys.S)))
+        {
+            _selectedLoginOption = (_selectedLoginOption + 1) % maxOptions;
+            if (_selectedLoginOption < 3)
+            {
+                _loginActiveField = _selectedLoginOption;
+            }
+        }
+
+        if (keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter))
+        {
+            if (_selectedLoginOption < 3 || _selectedLoginOption == 3)
+            {
+                SubmitLoginRegister();
+            }
+            else if (_selectedLoginOption == 4)
+            {
+                ToggleLoginRegisterMode();
+            }
+            else if (_selectedLoginOption == 5)
+            {
+                PlayOffline();
+            }
+            else if (_selectedLoginOption == 6)
+            {
+                Exit();
+            }
+        }
+    }
+
+    private void SubmitLoginRegister()
+    {
+        if (_isLoginProcessing) return;
+
+        if (string.IsNullOrWhiteSpace(_loginUsername) || string.IsNullOrWhiteSpace(_loginPassword))
+        {
+            _loginStatusMessage = "Vui long nhap day du thong tin.";
+            _loginStatusColor = Color.Red;
+            return;
+        }
+
+        if (_isRegisterMode)
+        {
+            if (_loginPassword != _loginConfirmPassword)
+            {
+                _loginStatusMessage = "Mat khau nhap lai khong khop.";
+                _loginStatusColor = Color.Red;
+                return;
+            }
+
+            _isLoginProcessing = true;
+            _loginStatusMessage = "Dang tao tai khoan...";
+            _loginStatusColor = Color.Yellow;
+
+            string u = _loginUsername;
+            string p = _loginPassword;
+
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                string error = await DatabaseManager.RegisterUserAsync(u, p);
+                if (error != null)
+                {
+                    _loginStatusMessage = error;
+                    _loginStatusColor = Color.Red;
+                    _isLoginProcessing = false;
+                }
+                else
+                {
+                    _loginStatusMessage = "Tao tai khoan thanh cong! Dang dang nhap...";
+                    _loginStatusColor = Color.Green;
+                    
+                    var loginResult = await DatabaseManager.LoginUserAsync(u, p);
+                    ProcessLoginResult(loginResult, u);
+                }
+            });
+        }
+        else
+        {
+            _isLoginProcessing = true;
+            _loginStatusMessage = "Dang dang nhap...";
+            _loginStatusColor = Color.Yellow;
+
+            string u = _loginUsername;
+            string p = _loginPassword;
+
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                var loginResult = await DatabaseManager.LoginUserAsync(u, p);
+                ProcessLoginResult(loginResult, u);
+            });
+        }
+    }
+
+    private void ProcessLoginResult((bool Success, SaveData SaveData, string ErrorMessage) result, string username)
+    {
+        _isLoginProcessing = false;
+        if (result.Success)
+        {
+            _loginStatusMessage = "Dang nhap thanh cong!";
+            _loginStatusColor = Color.Green;
+
+            if (result.SaveData != null)
+            {
+                _saveData = result.SaveData;
+            }
+            else
+            {
+                _saveData = new SaveData();
+            }
+            
+            _saveData.LoggedInUsername = username;
+
+            // Immediately save the fresh state to CSDL
+            _saveData.Save();
+
+            _settingsResolutionIndex = _saveData.ResolutionIndex;
+            _settingsFullscreen = _saveData.Fullscreen;
+            _settingsEffectsQuality = _saveData.EffectsQuality;
+            _settingsVsync = _saveData.Vsync;
+            _settingsFpsCap = _saveData.FpsCap;
+            _settingsMasterVolume = _saveData.MasterVolume;
+            _settingsMusicVolume = _saveData.MusicVolume;
+            _settingsSfxVolume = _saveData.SfxVolume;
+            _settingsShowFps = _saveData.ShowFps;
+            _settingsShowMinimap = _saveData.ShowMinimap;
+            _settingsUiScale = _saveData.UiScale;
+            _settingsDifficulty = _saveData.Difficulty;
+            _settingsScreenShake = _saveData.ScreenShake;
+            _currentStage = MathHelper.Clamp(_saveData.LastSelectedStage, 1, StageConfigs.Length);
+            _selectedStageIndex = _currentStage - 1;
+
+            _pendingSettingsApply = true;
+            ResetGame();
+            _gameState = GameState.Lobby;
+        }
+        else
+        {
+            _loginStatusMessage = result.ErrorMessage;
+            _loginStatusColor = Color.Red;
+        }
+    }
+
+    private void ToggleLoginRegisterMode()
+    {
+        _isRegisterMode = !_isRegisterMode;
+        _loginPassword = "";
+        _loginConfirmPassword = "";
+        _loginStatusMessage = "";
+        _loginActiveField = 0;
+        _selectedLoginOption = 0;
+    }
+
+    private void PlayOffline()
+    {
+        _loginStatusMessage = "Dang choi Ngoai Tuyen...";
+        _loginStatusColor = Color.Yellow;
+        _saveData = SaveData.Load();
+        _saveData.LoggedInUsername = null;
+        ResetGame();
+        _gameState = GameState.Lobby;
+    }
+
+    private void DrawLoginRegister(GameTime gameTime)
+    {
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, 800, 600), new Color(15, 23, 42));
+
+        int cardW = 440;
+        int cardH = _isRegisterMode ? 490 : 430;
+        int cardX = (800 - cardW) / 2;
+        int cardY = (600 - cardH) / 2;
+
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, cardW, cardH), new Color(30, 41, 59, 220));
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, cardW, 2), Color.Gold * 0.6f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY + cardH - 2, cardW, 2), Color.Gold * 0.6f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX, cardY, 2, cardH), Color.Gold * 0.6f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(cardX + cardW - 2, cardY, 2, cardH), Color.Gold * 0.6f);
+
+        string title = "PIXEL SURVIVORS";
+        Vector2 titleSz = _scoreFont.MeasureString(title);
+        _spriteBatch.DrawString(_scoreFont, title, new Vector2(400 - titleSz.X / 2, cardY + 20), Color.Gold);
+
+        string subtitle = _isRegisterMode ? "DANG KY TAI KHOAN" : "DANG NHAP HE THONG";
+        Vector2 subtitleSz = _scoreFont.MeasureString(subtitle);
+        _spriteBatch.DrawString(_scoreFont, subtitle, new Vector2(400 - subtitleSz.X / 2, cardY + 50), Color.White * 0.8f);
+
+        int startY = cardY + 95;
+        int gap = 55;
+
+        DrawTextField("TEN DANG NHAP", _loginUsername, false, 250, startY, 300, 34, _selectedLoginOption == 0, "Nhap tai khoan...");
+        DrawTextField("MAT KHAU", _loginPassword, true, 250, startY + gap, 300, 34, _selectedLoginOption == 1, "Nhap mat khau...");
+
+        if (_isRegisterMode)
+        {
+            DrawTextField("NHAP LAI MAT KHAU", _loginConfirmPassword, true, 250, startY + gap * 2, 300, 34, _selectedLoginOption == 2, "Nhap lai mat khau...");
+        }
+
+        int submitY = _isRegisterMode ? startY + gap * 3 + 12 : startY + gap * 2 + 12;
+
+        if (!string.IsNullOrEmpty(_loginStatusMessage))
+        {
+            Vector2 statusSz = _scoreFont.MeasureString(_loginStatusMessage);
+            _spriteBatch.DrawString(_scoreFont, _loginStatusMessage, new Vector2(400 - statusSz.X / 2, submitY - 25), _loginStatusColor);
+        }
+
+        string submitText = _isRegisterMode ? "XAC NHAN DANG KY" : "XAC NHAN DANG NHAP";
+        DrawLoginButton(submitText, 250, submitY, 300, 36, _selectedLoginOption == 3, Color.Gold * 0.6f);
+        
+        string toggleText = _isRegisterMode ? "DA CO TAI KHOAN? DANG NHAP" : "CHUA CO TAI KHOAN? DANG KY";
+        DrawLoginButton(toggleText, 250, submitY + 45, 300, 36, _selectedLoginOption == 4, Color.CornflowerBlue * 0.6f);
+        
+        DrawLoginButton("CHOI NGOAI TUYEN", 250, submitY + 90, 300, 36, _selectedLoginOption == 5, Color.Green * 0.6f);
+        DrawLoginButton("THOAT GAME", 250, submitY + 135, 300, 36, _selectedLoginOption == 6, Color.Red * 0.6f);
+    }
+
+    private void DrawTextField(string label, string text, bool isPassword, int x, int y, int w, int h, bool isFocused, string placeholder)
+    {
+        Color borderCol = isFocused ? Color.CornflowerBlue : new Color(71, 85, 105);
+        Color bgCol = isFocused ? new Color(15, 23, 42) : new Color(30, 41, 59);
+
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, w, h), bgCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, w, 2), borderCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y + h - 2, w, 2), borderCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, 2, h), borderCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x + w - 2, y, 2, h), borderCol);
+
+        _spriteBatch.DrawString(_scoreFont, label, new Vector2(x, y - 22), Color.Khaki);
+
+        string displayText = text;
+        if (isPassword)
+        {
+            displayText = new string('*', text.Length);
+        }
+
+        Vector2 textPos = new Vector2(x + 10, y + (h - 22) / 2);
+        if (string.IsNullOrEmpty(displayText))
+        {
+            _spriteBatch.DrawString(_scoreFont, placeholder, textPos, Color.Gray * 0.7f);
+        }
+        else
+        {
+            _spriteBatch.DrawString(_scoreFont, displayText, textPos, Color.White);
+        }
+
+        if (isFocused && (int)(DateTime.Now.TimeOfDay.TotalMilliseconds / 500) % 2 == 0)
+        {
+            Vector2 textSz = _scoreFont.MeasureString(string.IsNullOrEmpty(displayText) ? "" : displayText);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle((int)(textPos.X + textSz.X + 2), y + 6, 2, h - 12), Color.CornflowerBlue);
+        }
+    }
+
+    private void DrawLoginButton(string label, int x, int y, int w, int h, bool isSelected, Color baseBorderColor)
+    {
+        Color borderCol = isSelected ? Color.Gold : baseBorderColor;
+        Color bgCol = isSelected ? new Color(51, 65, 85) : new Color(30, 41, 59);
+
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, w, h), bgCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, w, 2), borderCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y + h - 2, w, 2), borderCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, 2, h), borderCol);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(x + w - 2, y, 2, h), borderCol);
+
+        Vector2 textSz = _scoreFont.MeasureString(label);
+        _spriteBatch.DrawString(_scoreFont, label, new Vector2(x + (w - textSz.X) / 2, y + (h - 22) / 2), isSelected ? Color.Yellow : Color.White);
+    }
+
+    // ==========================================
+    // COMBAT EQUIPMENT SHOP & DRESSING ROOM
+    // ==========================================
+
+    private void RollEquipmentShop()
+    {
+        _saveData.ShopRolledIds.Clear();
+        string[] categories = { "Head", "Chest", "Gauntlet", "Leg", "Shoes", "Weapon", "Health", "Misc" };
+        var rand = new Random();
+        foreach (var cat in categories)
+        {
+            var catItems = EquipmentDatabase.GetByCategory(cat);
+            if (catItems.Count > 0)
+            {
+                var rolled = catItems[rand.Next(catItems.Count)];
+                _saveData.ShopRolledIds.Add(rolled.Id);
+            }
+        }
+        _saveData.LastShopRefresh = DateTime.Now;
+        _saveData.Save();
+    }
+
+    private void UpdateEquipmentShop(KeyboardState keyboardState)
+    {
+        // 5-minute auto refresh check
+        if (_saveData.ShopRolledIds == null || _saveData.ShopRolledIds.Count == 0 ||
+            _saveData.LastShopRefresh == DateTime.MinValue || (DateTime.Now - _saveData.LastShopRefresh) >= TimeSpan.FromMinutes(5))
+        {
+            RollEquipmentShop();
+        }
+
+        var mousePos = GetUiMousePosition();
+        
+        // Mouse handling
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            // 8 grid items
+            for (int i = 0; i < 8; i++)
+            {
+                int col = i % 4;
+                int row = i / 4;
+                int x = 40 + col * 185;
+                int y = 115 + row * 165;
+                var rect = new Rectangle(x, y, 175, 150);
+                if (rect.Contains(mousePos))
+                {
+                    _selectedShopIndex = i;
+                    var mouseState = Mouse.GetState();
+                    if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                    {
+                        BuyEquipmentItem(i);
+                        return;
+                    }
+                }
+            }
+
+            // Reroll button (index 8)
+            var rerollRect = new Rectangle(120, 465, 260, 45);
+            if (rerollRect.Contains(mousePos))
+            {
+                _selectedShopIndex = 8;
+                var mouseState = Mouse.GetState();
+                if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                {
+                    BuyEquipmentReroll();
+                    return;
+                }
+            }
+
+            // Back button (index 9)
+            var backRect = new Rectangle(420, 465, 260, 45);
+            if (backRect.Contains(mousePos))
+            {
+                _selectedShopIndex = 9;
+                var mouseState = Mouse.GetState();
+                if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                {
+                    _gameState = GameState.Lobby;
+                    return;
+                }
+            }
+        }
+
+        // Keyboard handling
+        bool up = (keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
+                  (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up));
+        bool down = (keyboardState.IsKeyDown(Keys.S) && _previousKeyboardState.IsKeyUp(Keys.S)) ||
+                    (keyboardState.IsKeyDown(Keys.Down) && _previousKeyboardState.IsKeyUp(Keys.Down));
+        bool left = (keyboardState.IsKeyDown(Keys.A) && _previousKeyboardState.IsKeyUp(Keys.A)) ||
+                    (keyboardState.IsKeyDown(Keys.Left) && _previousKeyboardState.IsKeyUp(Keys.Left));
+        bool right = (keyboardState.IsKeyDown(Keys.D) && _previousKeyboardState.IsKeyUp(Keys.D)) ||
+                     (keyboardState.IsKeyDown(Keys.Right) && _previousKeyboardState.IsKeyUp(Keys.Right));
+
+        if (up)
+        {
+            if (_selectedShopIndex >= 8) _selectedShopIndex = 4; // Move to bottom row
+            else if (_selectedShopIndex >= 4) _selectedShopIndex -= 4; // Move to top row
+            else _selectedShopIndex = 8; // Move to buttons
+        }
+        if (down)
+        {
+            if (_selectedShopIndex <= 3) _selectedShopIndex += 4;
+            else if (_selectedShopIndex <= 7) _selectedShopIndex = _selectedShopIndex <= 5 ? 8 : 9;
+            else _selectedShopIndex = _selectedShopIndex - 8; // Move to top row
+        }
+        if (left)
+        {
+            if (_selectedShopIndex == 8) _selectedShopIndex = 9;
+            else if (_selectedShopIndex == 9) _selectedShopIndex = 8;
+            else
+            {
+                int col = _selectedShopIndex % 4;
+                int row = _selectedShopIndex / 4;
+                col = (col - 1 + 4) % 4;
+                _selectedShopIndex = row * 4 + col;
+            }
+        }
+        if (right)
+        {
+            if (_selectedShopIndex == 8) _selectedShopIndex = 9;
+            else if (_selectedShopIndex == 9) _selectedShopIndex = 8;
+            else
+            {
+                int col = _selectedShopIndex % 4;
+                int row = _selectedShopIndex / 4;
+                col = (col + 1) % 4;
+                _selectedShopIndex = row * 4 + col;
+            }
+        }
+
+        if ((keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter)) ||
+            (keyboardState.IsKeyDown(Keys.Space) && _previousKeyboardState.IsKeyUp(Keys.Space)))
+        {
+            if (_selectedShopIndex <= 7)
+            {
+                BuyEquipmentItem(_selectedShopIndex);
+            }
+            else if (_selectedShopIndex == 8)
+            {
+                BuyEquipmentReroll();
+            }
+            else if (_selectedShopIndex == 9)
+            {
+                _gameState = GameState.Lobby;
+            }
+        }
+    }
+
+    private void BuyEquipmentItem(int index)
+    {
+        if (index < 0 || index >= _saveData.ShopRolledIds.Count) return;
+        string id = _saveData.ShopRolledIds[index];
+        if (string.IsNullOrEmpty(id)) return; // Already sold
+        
+        var eq = EquipmentDatabase.GetById(id);
+        if (eq == null) return;
+        
+        if (_saveData.Gold >= eq.Cost)
+        {
+            _saveData.Gold -= eq.Cost;
+            _saveData.OwnedEquipmentIds.Add(id);
+            _saveData.ShopRolledIds[index] = ""; // Mark as SOLD
+            _saveData.Save();
+        }
+    }
+
+    private void BuyEquipmentReroll()
+    {
+        if (_saveData.Gold >= 50)
+        {
+            _saveData.Gold -= 50;
+            RollEquipmentShop();
+        }
+    }
+
+    private void DrawEquipmentShop()
+    {
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, 800, 600), new Color(12, 16, 25));
+
+        string title = "CUA HANG TRANG BI CHIEN DAU (DUNG MOT LAN)";
+        Vector2 titleSize = _scoreFont.MeasureString(title);
+        _spriteBatch.DrawString(_scoreFont, title, new Vector2(400 - titleSize.X / 2, 20), Color.Gold);
+
+        string goldText = $"Vang dang co: {_saveData.Gold} Vang";
+        Vector2 goldSize = _scoreFont.MeasureString(goldText);
+        _spriteBatch.DrawString(_scoreFont, goldText, new Vector2(400 - goldSize.X / 2, 50), Color.LimeGreen);
+
+        // Refresh timer
+        TimeSpan remaining = TimeSpan.FromMinutes(5) - (DateTime.Now - _saveData.LastShopRefresh);
+        if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
+        string timerText = $"Lam moi sau: {remaining.Minutes:00}:{remaining.Seconds:00}";
+        Vector2 timerSize = _scoreFont.MeasureString(timerText);
+        _spriteBatch.DrawString(_scoreFont, timerText, new Vector2(400 - timerSize.X / 2, 80), Color.LightSkyBlue);
+
+        // 8 Grid items
+        for (int i = 0; i < 8; i++)
+        {
+            int col = i % 4;
+            int row = i / 4;
+            int x = 40 + col * 185;
+            int y = 115 + row * 165;
+            var cardRect = new Rectangle(x, y, 175, 150);
+
+            bool isSelected = i == _selectedShopIndex;
+            string id = i < _saveData.ShopRolledIds.Count ? _saveData.ShopRolledIds[i] : "";
+
+            if (string.IsNullOrEmpty(id))
+            {
+                // Sold state
+                _spriteBatch.Draw(_pixelTexture, cardRect, new Color(20, 20, 20, 200));
+                _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, 175, 2), Color.Gray * 0.4f);
+                _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y + 148, 175, 2), Color.Gray * 0.4f);
+                _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, 2, 150), Color.Gray * 0.4f);
+                _spriteBatch.Draw(_pixelTexture, new Rectangle(x + 173, y, 2, 150), Color.Gray * 0.4f);
+
+                string soldText = "DA BAN";
+                Vector2 soldSz = _scoreFont.MeasureString(soldText);
+                _spriteBatch.DrawString(_scoreFont, soldText, new Vector2(x + (175 - soldSz.X) / 2, y + 60), Color.Red * 0.8f);
+            }
+            else
+            {
+                var eq = EquipmentDatabase.GetById(id);
+                if (eq != null)
+                {
+                    Color tierColor = eq.Tier switch
+                    {
+                        "S" => Color.OrangeRed,
+                        "A" => Color.Purple,
+                        "B" => Color.DodgerBlue,
+                        "C" => Color.LimeGreen,
+                        _ => Color.Gray
+                    };
+
+                    Color bgCol = isSelected ? new Color(45, 55, 80, 200) : new Color(30, 41, 59, 180);
+                    _spriteBatch.Draw(_pixelTexture, cardRect, bgCol);
+
+                    // Border (glowing gold if selected, tier color if not)
+                    Color borderCol = isSelected ? Color.Gold : tierColor;
+                    int borderThick = isSelected ? 3 : 2;
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, 175, borderThick), borderCol);
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y + 150 - borderThick, 175, borderThick), borderCol);
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(x, y, borderThick, 150), borderCol);
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(x + 175 - borderThick, y, borderThick, 150), borderCol);
+
+                    // Tier badge
+                    string badge = $"[{eq.Tier}]";
+                    _spriteBatch.DrawString(_scoreFont, badge, new Vector2(x + 10, y + 10), tierColor);
+
+                    // Category name
+                    string catName = GetCategoryNameVietnamese(eq.Category);
+                    Vector2 catNameSz = _scoreFont.MeasureString(catName);
+                    _spriteBatch.DrawString(_scoreFont, catName, new Vector2(x + 175 - catNameSz.X - 10, y + 10), Color.LightGray * 0.8f);
+
+                    // Item name (wrap or draw smaller)
+                    string displayName = TruncateText(eq.Name, 155f);
+                    _spriteBatch.DrawString(_scoreFont, displayName, new Vector2(x + 10, y + 40), Color.White);
+
+                    // Stats summary inside card
+                    string statsSummary = eq.StatType switch
+                    {
+                        "MaxHP" => $"+{(int)eq.StatValue} HP",
+                        "Armor" => $"+{eq.StatValue:0.0} Giap",
+                        "Regen" => $"+{eq.StatValue:0.00} HP/giay",
+                        "Cooldown" => $"{eq.StatValue * 100:0}% Hoi chieu",
+                        _ => $"+{(int)(eq.StatValue * 100)}% {GetStatTypeNameVietnamese(eq.StatType)}"
+                    };
+                    _spriteBatch.DrawString(_scoreFont, statsSummary, new Vector2(x + 10, y + 70), Color.Cyan);
+
+                    // Cost text
+                    string costText = $"{eq.Cost} Vang";
+                    Vector2 costSz = _scoreFont.MeasureString(costText);
+                    _spriteBatch.DrawString(_scoreFont, costText, new Vector2(x + (175 - costSz.X) / 2, y + 110), Color.Yellow);
+
+                    // Tooltip
+                    RegisterTooltip(cardRect, eq.Name, $"{eq.Description}\nLoai: {catName}\nPham chat: {eq.Tier}\nGia: {eq.Cost} Vang.");
+                }
+            }
+        }
+
+        // Reroll button (index 8)
+        bool rerollSel = _selectedShopIndex == 8;
+        Color rerollBorder = rerollSel ? Color.Gold : Color.DeepSkyBlue * 0.6f;
+        Color rerollBg = rerollSel ? new Color(51, 65, 85) : new Color(30, 41, 59, 200);
+        var rerollRect = new Rectangle(120, 465, 260, 45);
+        _spriteBatch.Draw(_pixelTexture, rerollRect, rerollBg);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(120, 465, 260, 2), rerollBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(120, 508, 260, 2), rerollBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(120, 465, 2, 45), rerollBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(378, 465, 2, 45), rerollBorder);
+
+        string rerollText = "LAM MOI NGAY (50g)";
+        Vector2 rerollSz = _scoreFont.MeasureString(rerollText);
+        _spriteBatch.DrawString(_scoreFont, rerollText, new Vector2(120 + (260 - rerollSz.X) / 2, 465 + (45 - 22) / 2), rerollSel ? Color.Yellow : Color.White);
+        RegisterTooltip(rerollRect, "Lam moi danh sach", "Tieu phi 50 vang de lam moi ngay lap tuc tat ca vat pham.");
+
+        // Back button (index 9)
+        bool backSel = _selectedShopIndex == 9;
+        Color backBorder = backSel ? Color.Gold : Color.Red * 0.6f;
+        Color backBg = backSel ? new Color(80, 40, 40) : new Color(40, 20, 20, 200);
+        var backRect = new Rectangle(420, 465, 260, 45);
+        _spriteBatch.Draw(_pixelTexture, backRect, backBg);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(420, 465, 260, 2), backBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(420, 508, 260, 2), backBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(420, 465, 2, 45), backBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(678, 465, 2, 45), backBorder);
+
+        string backText = "QUAY LAI SANH CHO";
+        Vector2 backSz = _scoreFont.MeasureString(backText);
+        _spriteBatch.DrawString(_scoreFont, backText, new Vector2(420 + (260 - backSz.X) / 2, 465 + (45 - 22) / 2), backSel ? Color.Yellow : Color.White);
+        RegisterTooltip(backRect, "Quay lai", "Thoat cua hang trang bi ve lai sanh cho chinh.");
+
+        // Bottom guide
+        string guide = "W/S/A/D: Chuyen chon  |  ENTER/SPACE: Mua hang  |  Chuot: Click truc tiep";
+        Vector2 guideSz = _scoreFont.MeasureString(guide);
+        _spriteBatch.DrawString(_scoreFont, guide, new Vector2(400 - guideSz.X / 2, 545), Color.Gray * 0.8f);
+    }
+
+    private string GetCategoryNameVietnamese(string cat)
+    {
+        return cat switch
+        {
+            "Head" => "Giap Dau (Mu)",
+            "Chest" => "Giap Than (Ao)",
+            "Gauntlet" => "Giap Tay (Gang)",
+            "Leg" => "Giap Chan",
+            "Shoes" => "Giay Chay",
+            "Weapon" => "Vu Khi",
+            "Health" => "Binh Mau",
+            "Misc" => "Vat Pham Khac",
+            _ => cat
+        };
+    }
+
+    private void UpdateDressingRoom(KeyboardState keyboardState)
+    {
+        string[] categories = { "Head", "Chest", "Gauntlet", "Leg", "Shoes", "Weapon", "Health", "Misc" };
+        string currentCategory = _selectedShopIndex < 8 ? categories[_selectedShopIndex] : "";
+        
+        // Find owned items in current category
+        var ownedInCategory = new List<string>();
+        if (_saveData.OwnedEquipmentIds != null && _selectedShopIndex < 8)
+        {
+            foreach (var id in _saveData.OwnedEquipmentIds)
+            {
+                var eq = EquipmentDatabase.GetById(id);
+                if (eq != null && eq.Category == currentCategory)
+                {
+                    ownedInCategory.Add(id);
+                }
+            }
+        }
+
+        var mousePos = GetUiMousePosition();
+        if (mousePos.X != -1 && mousePos.Y != -1)
+        {
+            // Left slots mouse hover
+            for (int i = 0; i < 8; i++)
+            {
+                var rect = new Rectangle(40, 105 + i * 42, 320, 36);
+                if (rect.Contains(mousePos))
+                {
+                    _dressingRoomFocus = 0;
+                    _selectedShopIndex = i;
+
+                    var mouseState = Mouse.GetState();
+                    if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                    {
+                        // Toggle focus to inventory if clicked and has items
+                        if (ownedInCategory.Count > 0)
+                        {
+                            _dressingRoomFocus = 1;
+                            _selectedSkinIndex = 0;
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // Back button mouse hover
+            var backRect = new Rectangle(40, 460, 320, 40);
+            if (backRect.Contains(mousePos))
+            {
+                _dressingRoomFocus = 0;
+                _selectedShopIndex = 8;
+                var mouseState = Mouse.GetState();
+                if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                {
+                    _gameState = GameState.Lobby;
+                    return;
+                }
+            }
+
+            // Right inventory items mouse hover
+            if (_dressingRoomFocus == 1 && ownedInCategory.Count > 0)
+            {
+                for (int i = 0; i < ownedInCategory.Count; i++)
+                {
+                    var rect = new Rectangle(400, 135 + i * 36, 360, 30);
+                    if (rect.Contains(mousePos))
+                    {
+                        _selectedSkinIndex = i;
+                        var mouseState = Mouse.GetState();
+                        if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+                        {
+                            EquipItem(currentCategory, ownedInCategory[i]);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Keyboard navigation
+        bool up = (keyboardState.IsKeyDown(Keys.W) && _previousKeyboardState.IsKeyUp(Keys.W)) ||
+                  (keyboardState.IsKeyDown(Keys.Up) && _previousKeyboardState.IsKeyUp(Keys.Up));
+        bool down = (keyboardState.IsKeyDown(Keys.S) && _previousKeyboardState.IsKeyUp(Keys.S)) ||
+                    (keyboardState.IsKeyDown(Keys.Down) && _previousKeyboardState.IsKeyUp(Keys.Down));
+        bool left = (keyboardState.IsKeyDown(Keys.A) && _previousKeyboardState.IsKeyUp(Keys.A)) ||
+                    (keyboardState.IsKeyDown(Keys.Left) && _previousKeyboardState.IsKeyUp(Keys.Left));
+        bool right = (keyboardState.IsKeyDown(Keys.D) && _previousKeyboardState.IsKeyUp(Keys.D)) ||
+                     (keyboardState.IsKeyDown(Keys.Right) && _previousKeyboardState.IsKeyUp(Keys.Right));
+        bool unequipKey = (keyboardState.IsKeyDown(Keys.X) && _previousKeyboardState.IsKeyUp(Keys.X));
+
+        // Unequip currently selected slot
+        if (unequipKey && _selectedShopIndex < 8 && _dressingRoomFocus == 0)
+        {
+            UnequipItem(currentCategory);
+        }
+
+        if (_dressingRoomFocus == 0)
+        {
+            // Focus on slots
+            if (up)
+            {
+                _selectedShopIndex = (_selectedShopIndex - 1 + 9) % 9;
+            }
+            if (down)
+            {
+                _selectedShopIndex = (_selectedShopIndex + 1) % 9;
+            }
+            if (right && _selectedShopIndex < 8 && ownedInCategory.Count > 0)
+            {
+                _dressingRoomFocus = 1;
+                _selectedSkinIndex = 0;
+            }
+            if ((keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter)) ||
+                (keyboardState.IsKeyDown(Keys.Space) && _previousKeyboardState.IsKeyUp(Keys.Space)))
+            {
+                if (_selectedShopIndex == 8)
+                {
+                    _gameState = GameState.Lobby;
+                }
+                else if (ownedInCategory.Count > 0)
+                {
+                    _dressingRoomFocus = 1;
+                    _selectedSkinIndex = 0;
+                }
+            }
+        }
+        else
+        {
+            // Focus on owned items
+            if (up)
+            {
+                _selectedSkinIndex = (_selectedSkinIndex - 1 + ownedInCategory.Count) % ownedInCategory.Count;
+            }
+            if (down)
+            {
+                _selectedSkinIndex = (_selectedSkinIndex + 1) % ownedInCategory.Count;
+            }
+            if (left || keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
+            {
+                _dressingRoomFocus = 0;
+            }
+            if ((keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter)) ||
+                (keyboardState.IsKeyDown(Keys.Space) && _previousKeyboardState.IsKeyUp(Keys.Space)))
+            {
+                if (_selectedSkinIndex >= 0 && _selectedSkinIndex < ownedInCategory.Count)
+                {
+                    EquipItem(currentCategory, ownedInCategory[_selectedSkinIndex]);
+                }
+            }
+        }
+    }
+
+    private void EquipItem(string category, string itemId)
+    {
+        if (string.IsNullOrEmpty(itemId)) return;
+
+        // Unequip previous item if any
+        string prevId = _saveData.EquippedIds.TryGetValue(category, out var val) ? val : "";
+        if (!string.IsNullOrEmpty(prevId))
+        {
+            _saveData.OwnedEquipmentIds.Add(prevId);
+        }
+
+        // Equip new item
+        _saveData.EquippedIds[category] = itemId;
+        _saveData.OwnedEquipmentIds.Remove(itemId);
+        _saveData.Save();
+
+        // Return focus to Slots
+        _dressingRoomFocus = 0;
+    }
+
+    private void UnequipItem(string category)
+    {
+        string prevId = _saveData.EquippedIds.TryGetValue(category, out var val) ? val : "";
+        if (!string.IsNullOrEmpty(prevId))
+        {
+            _saveData.EquippedIds[category] = "";
+            _saveData.OwnedEquipmentIds.Add(prevId);
+            _saveData.Save();
+        }
+    }
+
+    private void DrawDressingRoom()
+    {
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, 800, 600), new Color(12, 16, 25));
+
+        string title = "PHONG THAY DO & TRANG BI CONG CHIEN";
+        Vector2 titleSize = _scoreFont.MeasureString(title);
+        _spriteBatch.DrawString(_scoreFont, title, new Vector2(400 - titleSize.X / 2, 20), Color.Gold);
+
+        string goldText = $"Vang dang co: {_saveData.Gold} Vang";
+        Vector2 goldSize = _scoreFont.MeasureString(goldText);
+        _spriteBatch.DrawString(_scoreFont, goldText, new Vector2(400 - goldSize.X / 2, 50), Color.LimeGreen);
+
+        string[] categories = { "Head", "Chest", "Gauntlet", "Leg", "Shoes", "Weapon", "Health", "Misc" };
+        string currentCategory = _selectedShopIndex < 8 ? categories[_selectedShopIndex] : "Head";
+
+        // Find owned items in current category
+        var ownedInCategory = new List<string>();
+        if (_saveData.OwnedEquipmentIds != null && _selectedShopIndex < 8)
+        {
+            foreach (var id in _saveData.OwnedEquipmentIds)
+            {
+                var eq = EquipmentDatabase.GetById(id);
+                if (eq != null && eq.Category == currentCategory)
+                {
+                    ownedInCategory.Add(id);
+                }
+            }
+        }
+
+        // Draw left side: 8 Equipped Slots
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(30, 95, 340, 350), new Color(30, 41, 59, 150));
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(30, 95, 340, 2), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(30, 443, 340, 2), Color.Gold * 0.4f);
+
+        for (int i = 0; i < 8; i++)
+        {
+            string cat = categories[i];
+            string catLabel = GetCategoryNameVietnamese(cat);
+            string equippedId = _saveData.EquippedIds.TryGetValue(cat, out var val) ? val : "";
+            var eq = EquipmentDatabase.GetById(equippedId);
+
+            int itemY = 105 + i * 42;
+            bool isSelected = i == _selectedShopIndex && _dressingRoomFocus == 0;
+
+            // Background
+            Color bgCol = isSelected ? new Color(51, 65, 85) : new Color(15, 23, 42, 100);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(40, itemY, 320, 36), bgCol);
+
+            // Border
+            Color borderCol = isSelected ? Color.Gold : Color.Gray * 0.3f;
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(40, itemY, 320, 2), borderCol);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(40, itemY + 34, 320, 2), borderCol);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(40, itemY, 2, 36), borderCol);
+            _spriteBatch.Draw(_pixelTexture, new Rectangle(358, itemY, 2, 36), borderCol);
+
+            // Icon / Label
+            _spriteBatch.DrawString(_scoreFont, $"{i+1}. {catLabel}:", new Vector2(50, itemY + 8), isSelected ? Color.Yellow : Color.Khaki);
+
+            // Equipped item name
+            string itemNameText = "[Trống]";
+            Color nameCol = Color.Gray * 0.8f;
+            if (eq != null)
+            {
+                itemNameText = eq.Name;
+                nameCol = eq.Tier switch
+                {
+                    "S" => Color.OrangeRed,
+                    "A" => Color.Purple,
+                    "B" => Color.DodgerBlue,
+                    "C" => Color.LimeGreen,
+                    _ => Color.White
+                };
+            }
+            DrawTruncatedString(itemNameText, new Vector2(170, itemY + 8), 180f, nameCol);
+
+            // Register slot tooltip
+            if (eq != null)
+            {
+                RegisterTooltip(new Rectangle(40, itemY, 320, 36), eq.Name, $"{eq.Description}\n[Bam Phim X de thao ra]");
+            }
+            else
+            {
+                RegisterTooltip(new Rectangle(40, itemY, 320, 36), catLabel, $"Chua trang bi vat pham nao cho o nay.\nHay mua o Cua hang va trang bi vao.");
+            }
+        }
+
+        // Draw Back button (index 8)
+        bool backSel = _selectedShopIndex == 8 && _dressingRoomFocus == 0;
+        Color backBorder = backSel ? Color.Gold : Color.Red * 0.5f;
+        Color backBg = backSel ? new Color(80, 40, 40) : new Color(40, 20, 20);
+        var backRect = new Rectangle(40, 460, 320, 40);
+        _spriteBatch.Draw(_pixelTexture, backRect, backBg);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(40, 460, 320, 2), backBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(40, 498, 320, 2), backBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(40, 460, 2, 40), backBorder);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(358, 460, 2, 40), backBorder);
+
+        string backText = "QUAY LAI SANH CHO (ESC)";
+        Vector2 backSz = _scoreFont.MeasureString(backText);
+        _spriteBatch.DrawString(_scoreFont, backText, new Vector2(40 + (320 - backSz.X) / 2, 460 + (40 - 22) / 2), backSel ? Color.Yellow : Color.White);
+
+        // Draw right side: Owned Items in Selected Category
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(390, 95, 380, 320), new Color(30, 41, 59, 150));
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(390, 95, 380, 2), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(390, 413, 380, 2), Color.Gold * 0.4f);
+
+        string catTitle = $"KHO DO: {GetCategoryNameVietnamese(currentCategory).ToUpper()}";
+        _spriteBatch.DrawString(_scoreFont, catTitle, new Vector2(405, 105), Color.Gold);
+
+        if (_selectedShopIndex >= 8)
+        {
+            string selectSlotMsg = "Hay chon mot o trang bi ben trai de xem kho do.";
+            _spriteBatch.DrawString(_scoreFont, selectSlotMsg, new Vector2(405, 150), Color.Gray);
+        }
+        else if (ownedInCategory.Count == 0)
+        {
+            string emptyMsg = "Khong co trang bi nao trong kho.\nHay mua tai Cua Hang Trang Bi.";
+            _spriteBatch.DrawString(_scoreFont, emptyMsg, new Vector2(405, 150), Color.Gray);
+        }
+        else
+        {
+            // Draw list of owned items
+            for (int i = 0; i < Math.Min(ownedInCategory.Count, 7); i++)
+            {
+                string id = ownedInCategory[i];
+                var eq = EquipmentDatabase.GetById(id);
+                if (eq == null) continue;
+
+                int itemY = 135 + i * 36;
+                bool isSelected = i == _selectedSkinIndex && _dressingRoomFocus == 1;
+
+                Color bgCol = isSelected ? new Color(51, 65, 85) : new Color(15, 23, 42, 100);
+                _spriteBatch.Draw(_pixelTexture, new Rectangle(400, itemY, 360, 30), bgCol);
+
+                Color tierColor = eq.Tier switch
+                {
+                    "S" => Color.OrangeRed,
+                    "A" => Color.Purple,
+                    "B" => Color.DodgerBlue,
+                    "C" => Color.LimeGreen,
+                    _ => Color.Gray
+                };
+
+                Color borderCol = isSelected ? Color.Gold : Color.Transparent;
+                if (isSelected)
+                {
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(400, itemY, 360, 2), borderCol);
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(400, itemY + 28, 360, 2), borderCol);
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(400, itemY, 2, 30), borderCol);
+                    _spriteBatch.Draw(_pixelTexture, new Rectangle(758, itemY, 2, 30), borderCol);
+                }
+
+                _spriteBatch.DrawString(_scoreFont, $"[{eq.Tier}]", new Vector2(410, itemY + 5), tierColor);
+                DrawTruncatedString(eq.Name, new Vector2(450, itemY + 5), 200f, isSelected ? Color.Yellow : Color.White);
+
+                // Stats text
+                string statsSummary = eq.StatType switch
+                {
+                    "MaxHP" => $"+{(int)eq.StatValue} HP",
+                    "Armor" => $"+{eq.StatValue:0.0} Giap",
+                    "Regen" => $"+{eq.StatValue:0.0} HP/giay",
+                    "Cooldown" => $"{eq.StatValue * 100:0}% Hoi chieu",
+                    _ => $"+{(int)(eq.StatValue * 100)}% {GetStatTypeNameVietnamese(eq.StatType)}"
+                };
+                _spriteBatch.DrawString(_scoreFont, statsSummary, new Vector2(670, itemY + 5), Color.Cyan);
+
+                // Tooltip
+                RegisterTooltip(new Rectangle(400, itemY, 360, 30), eq.Name, $"{eq.Description}\n[Bam ENTER de trang bi]");
+            }
+        }
+
+        // Draw bottom Stats Panel: Cumulative Bonuses
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(390, 425, 380, 85), new Color(30, 41, 59, 150));
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(390, 425, 380, 2), Color.Gold * 0.4f);
+        _spriteBatch.Draw(_pixelTexture, new Rectangle(390, 508, 380, 2), Color.Gold * 0.4f);
+
+        _spriteBatch.DrawString(_scoreFont, "CHI SO DUOC CONG THEM TRONG TRAN KE:", new Vector2(400, 432), Color.Gold);
+
+        var cumulative = GetCumulativeDressingRoomStats();
+        if (cumulative.Count == 0)
+        {
+            _spriteBatch.DrawString(_scoreFont, "Chua trang bi mon nao. Khong co chi so duoc cong.", new Vector2(400, 460), Color.Gray);
+        }
+        else
+        {
+            int count = 0;
+            string row1 = "";
+            string row2 = "";
+            foreach (var kvp in cumulative)
+            {
+                string text = GetStatTypeDisplayName(kvp.Key, kvp.Value);
+                if (count < 3)
+                {
+                    row1 += (row1 == "" ? "" : " | ") + text;
+                }
+                else
+                {
+                    row2 += (row2 == "" ? "" : " | ") + text;
+                }
+                count++;
+            }
+
+            DrawTruncatedString(row1, new Vector2(400, 456), 360f, Color.LimeGreen);
+            if (row2 != "")
+            {
+                DrawTruncatedString(row2, new Vector2(400, 480), 360f, Color.LimeGreen);
+            }
+        }
+
+        // Bottom guide
+        string guide = "W/S: Di chuyen  |  LEFT/RIGHT: Chuyen cot  |  ENTER: Chon  |  X: Thao trang bi";
+        if (_dressingRoomFocus == 1)
+        {
+            guide = "W/S: Di chuyen trong kho  |  ESC/LEFT: Quay lai chon o trang bi  |  ENTER: Trang bi";
+        }
+        Vector2 guideSz = _scoreFont.MeasureString(guide);
+        _spriteBatch.DrawString(_scoreFont, guide, new Vector2(400 - guideSz.X / 2, 545), Color.Gray * 0.8f);
+    }
+
+    private Dictionary<string, float> GetCumulativeDressingRoomStats()
+    {
+        var stats = new Dictionary<string, float>();
+        foreach (var kvp in _saveData.EquippedIds)
+        {
+            if (!string.IsNullOrEmpty(kvp.Value))
+            {
+                var eq = EquipmentDatabase.GetById(kvp.Value);
+                if (eq != null)
+                {
+                    if (!stats.ContainsKey(eq.StatType)) stats[eq.StatType] = 0f;
+                    stats[eq.StatType] += eq.StatValue;
+                }
+            }
+        }
+        return stats;
+    }
+
+    private string GetStatTypeNameVietnamese(string statType)
+    {
+        return statType switch
+        {
+            "MaxHP" => "HP",
+            "Damage" => "Sat thuong",
+            "Speed" => "Toc do",
+            "Armor" => "Giap",
+            "Magnet" => "Pham vi nhat",
+            "Cooldown" => "Hoi chieu",
+            "Growth" => "Kinh nghiem",
+            "Greed" => "Vang",
+            "Luck" => "May man",
+            "Regen" => "Hoi HP",
+            "Area" => "Kich thuoc",
+            "Duration" => "Thoi gian duy tri",
+            "ProjSpeed" => "Toc do dan",
+            _ => statType
+        };
+    }
+
+    private string GetStatTypeDisplayName(string statType, float val)
+    {
+        string sign = val >= 0 ? "+" : "";
+        string pct = statType switch
+        {
+            "MaxHP" or "Armor" or "Regen" => "",
+            _ => "%"
+        };
+        string formattedVal = statType switch
+        {
+            "MaxHP" => $"{sign}{(int)val}",
+            "Armor" => $"{sign}{val:0.0}",
+            "Regen" => $"{sign}{val:0.00}",
+            "Cooldown" => $"{(val * 100):0}%", // Cooldown reduction is negative
+            _ => $"{sign}{(int)(val * 100)}"
+        };
+
+        return statType switch
+        {
+            "MaxHP" => $"HP: {formattedVal}",
+            "Damage" => $"Sat thuong: {formattedVal}{pct}",
+            "Speed" => $"Toc do: {formattedVal}{pct}",
+            "Armor" => $"Giap: {formattedVal}",
+            "Magnet" => $"Pham vi nhat: {formattedVal}{pct}",
+            "Cooldown" => $"Hoi chieu: {formattedVal}",
+            "Growth" => $"Kinh nghiem: {formattedVal}{pct}",
+            "Greed" => $"Vang: {formattedVal}{pct}",
+            "Luck" => $"May man: {formattedVal}{pct}",
+            "Regen" => $"Hoi HP: {formattedVal}",
+            "Area" => $"Kich thuoc: {formattedVal}{pct}",
+            "Duration" => $"Thoi gian duy tri: {formattedVal}{pct}",
+            "ProjSpeed" => $"Toc do dan: {formattedVal}{pct}",
+            _ => $"{statType}: {formattedVal}"
+        };
     }
 }

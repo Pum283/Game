@@ -1,14 +1,20 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace MyGame;
 
+/// <summary>
+/// In-memory player profile used by the game client.
+/// When logged in, each field is persisted to normalized SQL tables (not a single JSON column).
+/// Offline / guest mode still uses save.json on disk.
+/// </summary>
 public class SaveData
 {
     public int Gold { get; set; } = 0;
     
-    // Permanent Upgrades (max 10)
+    // Permanent Upgrades (max 50)
     public int MaxHPUpgradeLevel { get; set; } = 0;    // +10% Max HP per level
     public int DamageUpgradeLevel { get; set; } = 0;   // +10% Damage per level
     public int SpeedUpgradeLevel { get; set; } = 0;    // +5% Speed per level
@@ -18,7 +24,26 @@ public class SaveData
     public int GrowthUpgradeLevel { get; set; } = 0;   // +8% EXP gained per level
     public int GreedUpgradeLevel { get; set; } = 0;    // +10% gold collected per level
     public int LuckUpgradeLevel { get; set; } = 0;     // +10% luck per level
+    public int RegenUpgradeLevel { get; set; } = 0;    // +0.1 HP regen per sec per level
+    public int AreaUpgradeLevel { get; set; } = 0;     // +2% weapon area/size per level
+    public int DurationUpgradeLevel { get; set; } = 0; // +2% duration/lifetime per level
+    public int ProjSpeedUpgradeLevel { get; set; } = 0;// +2% projectile speed per level
 
+    // Combat Equipment Shop & Dressing Room
+    public System.Collections.Generic.List<string> OwnedEquipmentIds { get; set; } = new();
+    public System.Collections.Generic.Dictionary<string, string> EquippedIds { get; set; } = new()
+    {
+        { "Head", "" },
+        { "Chest", "" },
+        { "Gauntlet", "" },
+        { "Leg", "" },
+        { "Shoes", "" },
+        { "Weapon", "" },
+        { "Health", "" },
+        { "Misc", "" }
+    };
+    public System.Collections.Generic.List<string> ShopRolledIds { get; set; } = new();
+    public System.DateTime LastShopRefresh { get; set; } = System.DateTime.MinValue;
     // Consumables bought at Lobby for next run
     public int ReviveCount { get; set; } = 0;          // Max 3
     public int StartingPotions { get; set; } = 0;      // Max 5
@@ -29,7 +54,7 @@ public class SaveData
     public System.Collections.Generic.List<string> UnlockedSkins { get; set; } = new() { "Knight" };
 
     // Saved Game Settings
-    public int ResolutionIndex { get; set; } = 2; // Default to 1280x720
+    public int ResolutionIndex { get; set; } = 4; // Default to 1920x1080
     public bool Fullscreen { get; set; } = false;
     public int EffectsQuality { get; set; } = 1;  // 0=Low, 1=Medium, 2=High
     public bool Vsync { get; set; } = true;
@@ -103,12 +128,24 @@ public class SaveData
         return new SaveData();
     }
 
+    [JsonIgnore]
+    public string LoggedInUsername { get; set; } = null;
+
+    [JsonIgnore]
+    public bool IsLoggedIn => !string.IsNullOrEmpty(LoggedInUsername);
+
     public void Save()
     {
         try
         {
             string json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(SaveFilePath, json);
+
+            if (IsLoggedIn)
+            {
+                // Save to database asynchronously to prevent stuttering/lag
+                _ = DatabaseManager.SaveUserDataAsync(LoggedInUsername, this);
+            }
         }
         catch (Exception)
         {

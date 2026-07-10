@@ -90,8 +90,8 @@ public class Projectile
         if (IsBible)
         {
             // Bible orbits player. Speed scales with Bracer
-            BibleAngle += (3.2f + player.BracerLevel * 0.15f) * deltaTime;
-            float radius = 70f + player.SpellbinderLevel * 12f;
+            BibleAngle += (3.2f + player.BracerLevel * 0.15f) * player.PermanentProjSpeedBoost * deltaTime;
+            float radius = (70f + player.SpellbinderLevel * 12f) * player.PermanentAreaBoost;
             Position = playerCenter - new Vector2(Width / 2f, Height / 2f) + new Vector2((float)Math.Cos(BibleAngle) * radius, (float)Math.Sin(BibleAngle) * radius);
             
             // Track elapsed time as distance (* 100)

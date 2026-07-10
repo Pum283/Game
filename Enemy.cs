@@ -37,6 +37,7 @@ public class Enemy
     private int _directionRow = 0; // 0 = Down, 1 = Up, 2 = Left, 3 = Right
 
     public Rectangle Bounds => new Rectangle((int)Position.X, (int)Position.Y, Width, Height);
+    public Vector2 Center => new Vector2(Position.X + Width / 2f, Position.Y + Height / 2f);
 
     public Enemy(Vector2 startPosition, EnemyType type)
     {

@@ -361,3 +361,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Custom ignore rules for Pixel Survival
+Content/Game.rar
+Game_Build/
+save.json
+crash_report.txt
+*.tmp

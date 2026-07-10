@@ -49,6 +49,10 @@ public class Player
     public float PermanentGreedBoost { get; set; } = 1.0f;
     public float PermanentLuckBoost { get; set; } = 1.0f;
     public float PermanentCooldownReduction { get; set; } = 0f;
+    public float PermanentRegen { get; set; } = 0f;
+    public float PermanentAreaBoost { get; set; } = 1.0f;
+    public float PermanentDurationBoost { get; set; } = 1.0f;
+    public float PermanentProjSpeedBoost { get; set; } = 1.0f;
 
     // Run-specific consumable/boost state
     public int CurrentRevives { get; set; } = 0;
@@ -79,18 +83,67 @@ public class Player
         Width = 32;
         Height = 32;
 
-        // Apply permanent upgrades from Shop (save.json)
-        MaxHP = 100f * (1f + save.MaxHPUpgradeLevel * 0.10f);
+        // Initialize equipment boosts
+        float eqMaxHP = 0f;
+        float eqDamage = 0f;
+        float eqSpeed = 0f;
+        float eqArmor = 0f;
+        float eqMagnet = 0f;
+        float eqCooldown = 0f;
+        float eqGrowth = 0f;
+        float eqGreed = 0f;
+        float eqLuck = 0f;
+        float eqRegen = 0f;
+        float eqArea = 0f;
+        float eqDuration = 0f;
+        float eqProjSpeed = 0f;
+
+        if (save.EquippedIds != null)
+        {
+            foreach (var kvp in save.EquippedIds)
+            {
+                if (!string.IsNullOrEmpty(kvp.Value))
+                {
+                    var eq = EquipmentDatabase.GetById(kvp.Value);
+                    if (eq != null)
+                    {
+                        switch (eq.StatType)
+                        {
+                            case "MaxHP": eqMaxHP += eq.StatValue; break;
+                            case "Damage": eqDamage += eq.StatValue; break;
+                            case "Speed": eqSpeed += eq.StatValue; break;
+                            case "Armor": eqArmor += eq.StatValue; break;
+                            case "Magnet": eqMagnet += eq.StatValue; break;
+                            case "Cooldown": eqCooldown += eq.StatValue; break;
+                            case "Growth": eqGrowth += eq.StatValue; break;
+                            case "Greed": eqGreed += eq.StatValue; break;
+                            case "Luck": eqLuck += eq.StatValue; break;
+                            case "Regen": eqRegen += eq.StatValue; break;
+                            case "Area": eqArea += eq.StatValue; break;
+                            case "Duration": eqDuration += eq.StatValue; break;
+                            case "ProjSpeed": eqProjSpeed += eq.StatValue; break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply permanent upgrades from Shop (save.json) - up to 50 levels + Equipment boosts
+        MaxHP = 100f * (1f + save.MaxHPUpgradeLevel * 0.05f) + eqMaxHP;
         HP = MaxHP;
-        Speed = 190f * (1f + save.SpeedUpgradeLevel * 0.05f); // Base speed 190
-        DamageMultiplier = 1.0f + save.DamageUpgradeLevel * 0.10f;
+        Speed = 190f * (1f + save.SpeedUpgradeLevel * 0.015f + eqSpeed);
+        DamageMultiplier = 1.0f + save.DamageUpgradeLevel * 0.05f + eqDamage;
         
-        PermanentArmor = save.ArmorUpgradeLevel; // reduces 1 damage flat per level
-        PermanentMagnetBoost = 1.0f + save.MagnetUpgradeLevel * 0.15f;
-        PermanentGrowthBoost = 1.0f + save.GrowthUpgradeLevel * 0.08f;
-        PermanentGreedBoost = 1.0f + save.GreedUpgradeLevel * 0.10f;
-        PermanentLuckBoost = 1.0f + save.LuckUpgradeLevel * 0.10f;
-        PermanentCooldownReduction = save.CooldownUpgradeLevel * 0.04f;
+        PermanentArmor = save.ArmorUpgradeLevel * 0.5f + eqArmor;
+        PermanentMagnetBoost = 1.0f + save.MagnetUpgradeLevel * 0.05f + eqMagnet;
+        PermanentGrowthBoost = 1.0f + save.GrowthUpgradeLevel * 0.04f + eqGrowth;
+        PermanentGreedBoost = 1.0f + save.GreedUpgradeLevel * 0.05f + eqGreed;
+        PermanentLuckBoost = 1.0f + save.LuckUpgradeLevel * 0.04f + eqLuck;
+        PermanentCooldownReduction = save.CooldownUpgradeLevel * 0.01f + eqCooldown;
+        PermanentRegen = save.RegenUpgradeLevel * 0.08f + eqRegen;
+        PermanentAreaBoost = 1.0f + save.AreaUpgradeLevel * 0.02f + eqArea;
+        PermanentDurationBoost = 1.0f + save.DurationUpgradeLevel * 0.02f + eqDuration;
+        PermanentProjSpeedBoost = 1.0f + save.ProjSpeedUpgradeLevel * 0.02f + eqProjSpeed;
 
         CurrentRevives = save.ReviveCount;
         CurrentPotions = save.StartingPotions;
